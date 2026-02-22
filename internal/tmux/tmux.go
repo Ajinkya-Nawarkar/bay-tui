@@ -322,6 +322,10 @@ func BindKeys() error {
 func bindKeysImpl(run RunnerFunc) error {
 	// Mouse
 	run("set-option", "-g", "mouse", "on")
+	// Prevent clicking window names in the status bar from switching windows.
+	run("unbind-key", "-n", "MouseDown1Status")
+	run("unbind-key", "-n", "MouseDown1StatusLeft")
+	run("unbind-key", "-n", "MouseDown1StatusRight")
 
 	// Pane border status
 	run("set-option", "-g", "pane-border-status", "top")
@@ -336,6 +340,9 @@ func bindKeysImpl(run RunnerFunc) error {
 	run("set-option", "-g", "status-right", "")
 	run("set-option", "-g", "window-status-current-style", "fg=#06B6D4,bold")
 	run("set-option", "-g", "window-status-style", "fg=#6B7280")
+	// Hide window list from status bar — the topbar IS the session switcher.
+	run("set-option", "-g", "window-status-format", "")
+	run("set-option", "-g", "window-status-current-format", "")
 
 	// Shell snippet that resolves the topbar pane ID at runtime from the persisted file.
 	// This stays correct even after the topbar moves between windows.
@@ -349,6 +356,16 @@ func bindKeysImpl(run RunnerFunc) error {
 	// Backtick as a second prefix
 	run("set-option", "-g", "prefix2", "`")
 	run("bind-key", "`", "send-keys", "`")
+
+	// Unbind native window-switching keys — all switching goes through topbar.
+	run("unbind-key", "n") // next-window
+	run("unbind-key", "p") // previous-window
+	run("unbind-key", "l") // last-window
+	for i := 0; i <= 9; i++ {
+		// Already rebound on prefix2 (backtick) to send-keys to topbar.
+		// Unbind on primary prefix (Ctrl+B) to prevent bypass.
+		run("unbind-key", "-T", "prefix", fmt.Sprintf("%d", i))
+	}
 
 	// Repeat timeout
 	run("set-option", "-g", "repeat-time", "1000")
