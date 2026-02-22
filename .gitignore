@@ -1,0 +1,8 @@
+# Binary
+bay
+
+# Claude Code local files
+.claude/
+
+# OS junk
+.DS_Store
