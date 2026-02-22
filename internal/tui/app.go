@@ -7,25 +7,25 @@ import (
 	"github.com/anawarkar/bay/internal/scanner"
 	"github.com/anawarkar/bay/internal/tui/create"
 	"github.com/anawarkar/bay/internal/tui/setup"
-	"github.com/anawarkar/bay/internal/tui/sidebar"
+	"github.com/anawarkar/bay/internal/tui/topbar"
 )
 
 type screen int
 
 const (
-	screenSidebar screen = iota
+	screenTopbar screen = iota
 	screenSetup
 	screenCreate
 )
 
 // App is the root Bubbletea model that switches between screens.
 type App struct {
-	screen       screen
-	sidebar      sidebar.Model
-	setupModel   setup.Model
-	createModel  create.Model
-	cfg          *config.Config
-	firstRun     bool
+	screen      screen
+	topbar      topbar.Model
+	setupModel  setup.Model
+	createModel create.Model
+	cfg         *config.Config
+	firstRun    bool
 }
 
 // NewApp creates the root app model.
@@ -39,8 +39,8 @@ func NewApp(cfg *config.Config, firstRun bool) App {
 		a.screen = screenSetup
 		a.setupModel = setup.New()
 	} else {
-		a.screen = screenSidebar
-		a.sidebar = sidebar.New(cfg)
+		a.screen = screenTopbar
+		a.topbar = topbar.New(cfg)
 	}
 
 	return a
@@ -51,6 +51,8 @@ func (a App) Init() tea.Cmd {
 	switch a.screen {
 	case screenSetup:
 		return a.setupModel.Init()
+	case screenTopbar:
+		return a.topbar.Init()
 	}
 	return nil
 }
@@ -66,40 +68,40 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Screen switching messages
 	case setup.DoneMsg:
 		a.cfg = msg.Config
-		a.screen = screenSidebar
-		a.sidebar = sidebar.New(a.cfg)
+		a.screen = screenTopbar
+		a.topbar = topbar.New(a.cfg)
 		return a, nil
 
-	case sidebar.SwitchToCreateMsg:
+	case topbar.SwitchToCreateMsg:
 		repos := scanner.Scan(a.cfg.ScanDirs)
 		a.createModel = create.New(repos, msg.PreselectedRepo)
 		a.screen = screenCreate
 		return a, a.createModel.Init()
 
-	case sidebar.SwitchToSetupMsg:
+	case topbar.SwitchToSetupMsg:
 		a.setupModel = setup.New()
 		a.screen = screenSetup
 		return a, a.setupModel.Init()
 
 	case create.DoneMsg:
-		a.screen = screenSidebar
-		a.sidebar.Refresh()
+		a.screen = screenTopbar
+		a.topbar.Refresh()
 		if msg.Session != nil {
-			a.sidebar.ActivateSession(msg.Session.Name)
-			a.sidebar.SetStatus("Created '" + msg.Session.Name + "'")
+			a.topbar.ActivateSession(msg.Session.Name)
+			a.topbar.SetStatus("Created '" + msg.Session.Name + "'")
 		}
 		return a, tea.ClearScreen
 
 	case create.CancelMsg:
-		a.screen = screenSidebar
+		a.screen = screenTopbar
 		return a, nil
 	}
 
 	// Route to active screen
 	switch a.screen {
-	case screenSidebar:
-		m, cmd := a.sidebar.Update(msg)
-		a.sidebar = m.(sidebar.Model)
+	case screenTopbar:
+		m, cmd := a.topbar.Update(msg)
+		a.topbar = m.(topbar.Model)
 		return a, cmd
 
 	case screenSetup:
@@ -130,6 +132,6 @@ func (a App) View() string {
 	case screenCreate:
 		return a.createModel.View()
 	default:
-		return a.sidebar.View()
+		return a.topbar.View()
 	}
 }

@@ -8,6 +8,7 @@ var (
 	Secondary = lipgloss.Color("#06B6D4") // cyan
 	Muted     = lipgloss.Color("#6B7280") // gray
 	Success   = lipgloss.Color("#10B981") // green
+	Focus     = lipgloss.Color("#FBBF24") // yellow — focus cursor
 	Danger    = lipgloss.Color("#EF4444") // red
 	White     = lipgloss.Color("#F9FAFB")
 	Dim       = lipgloss.Color("#4B5563")
@@ -83,7 +84,35 @@ var (
 	SuccessText = lipgloss.NewStyle().
 			Foreground(Success)
 
-	// Layout — no padding, sidebar manages its own layout
+	// Topbar styles
+	FocusedBorder = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(Focus).
+			Padding(0, 1)
+
+	RepoTab = lipgloss.NewStyle().
+		Foreground(Muted)
+
+	RepoTabActive = lipgloss.NewStyle().
+			Foreground(Secondary). // cyan — currently active repo
+			Bold(true)
+
+	RepoTabFocused = lipgloss.NewStyle().
+			Foreground(Focus). // yellow — focus cursor on repo row
+			Bold(true)
+
+	SessionTab = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	SessionTabActive = lipgloss.NewStyle().
+				Foreground(Success). // green — currently active session
+				Bold(true)
+
+	SessionTabFocused = lipgloss.NewStyle().
+				Foreground(Focus). // yellow — focus cursor on session row
+				Bold(true)
+
+	// Layout
 	AppContainer = lipgloss.NewStyle().
 			Padding(0, 1)
 )

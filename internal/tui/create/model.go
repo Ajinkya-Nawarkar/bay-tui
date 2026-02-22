@@ -67,6 +67,8 @@ func New(repos []scanner.Repo, preselectedRepo string) Model {
 		for i, r := range repos {
 			if r.Name == preselectedRepo {
 				m.repoCursor = i
+				m.selectedRepo = r
+				m.step = stepWorktreeChoice // skip repo picker
 				break
 			}
 		}

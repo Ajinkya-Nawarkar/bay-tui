@@ -2,7 +2,9 @@ package tmux
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -11,16 +13,47 @@ const (
 	// MainSession is the single tmux session bay uses.
 	MainSession = "bay"
 
-	// SidebarWidth is the fixed width of the sidebar in columns.
-	SidebarWidth = "35"
+	// TopbarHeight is the fixed height of the topbar in lines.
+	TopbarHeight = "4"
 
 	// Prefix kept for legacy/test compatibility.
 	Prefix = "bay-"
 )
 
-// sidebarPaneID caches the unique tmux pane ID (e.g. %0) of the sidebar pane.
+// topbarPaneID caches the unique tmux pane ID (e.g. %0) of the topbar pane.
 // This stays constant across join-pane / break-pane moves.
-var sidebarPaneID string
+var topbarPaneID string
+
+// topbarPaneFile returns the path where the topbar pane ID is persisted.
+func topbarPaneFile() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".bay", ".topbar-pane-id")
+}
+
+// saveTopbarPaneID writes the pane ID to disk so future processes can find it.
+func saveTopbarPaneID(id string) {
+	f := topbarPaneFile()
+	os.MkdirAll(filepath.Dir(f), 0o755)
+	os.WriteFile(f, []byte(strings.TrimSpace(id)), 0o644)
+}
+
+// loadTopbarPaneID reads the persisted pane ID from disk.
+func loadTopbarPaneID() string {
+	b, err := os.ReadFile(topbarPaneFile())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// paneExists returns true if the given tmux pane ID is alive in the bay session.
+func paneExists(paneID string) bool {
+	if paneID == "" {
+		return false
+	}
+	_, err := run("display-message", "-t", paneID, "-p", "#{pane_id}")
+	return err == nil
+}
 
 // run executes a tmux command and returns combined output.
 func run(args ...string) (string, error) {
@@ -35,43 +68,76 @@ func SessionExists(name string) bool {
 	return err == nil
 }
 
-// CreateMainSession creates the bay session with just the sidebar pane.
-// Window 0 runs the sidebar TUI — no dev panes until a session is activated.
-func CreateMainSession(sidebarCmd string) error {
+// wrapTopbarCmd wraps the topbar command so it auto-restarts on unexpected exit.
+// A normal exit (status 0, from bay quitting) breaks the loop.
+func wrapTopbarCmd(cmd string) string {
+	return fmt.Sprintf("bash -c 'while true; do %s; [ $? -eq 0 ] && break; sleep 0.2; done'", cmd)
+}
+
+// CreateMainSession creates the bay session with just the topbar pane.
+// If the session already exists and the topbar is still alive, leaves it alone.
+// If the topbar is gone, spawns a new one.
+func CreateMainSession(topbarCmd string) error {
+	wrapped := wrapTopbarCmd(topbarCmd)
+
 	if SessionExists(MainSession) {
+		// Use the persisted pane ID to find the topbar without guessing by position.
+		savedID := loadTopbarPaneID()
+		if paneExists(savedID) {
+			// Topbar is alive — nothing to do.
+			topbarPaneID = savedID
+			return nil
+		}
+		// Topbar is gone — spawn a fresh one in a new window.
+		out, err := run("new-window", "-t", MainSession+":", "-d", "-P", "-F", "#{pane_id}", "--", "bash", "-c", wrapped)
+		if err != nil {
+			return fmt.Errorf("new-window for topbar: %w", err)
+		}
+		topbarPaneID = strings.TrimSpace(out)
+		saveTopbarPaneID(topbarPaneID)
 		return nil
 	}
 
-	if _, err := run("new-session", "-d", "-s", MainSession, sidebarCmd); err != nil {
+	if _, err := run("new-session", "-d", "-s", MainSession, wrapped); err != nil {
 		return fmt.Errorf("new-session: %w", err)
 	}
 
-	// Capture the sidebar's unique pane ID so we can track it across windows.
+	// Capture the topbar's unique pane ID so we can track it across windows.
 	id, err := run("display-message", "-t", MainSession+":0.0", "-p", "#{pane_id}")
 	if err == nil {
-		sidebarPaneID = id
+		topbarPaneID = strings.TrimSpace(id)
+		saveTopbarPaneID(topbarPaneID)
 	}
 
 	return nil
 }
 
-// InitSidebarPaneID discovers the sidebar pane ID if not already cached.
-// Call this from the TUI startup path (inside tmux) so we know which pane is the sidebar.
-func InitSidebarPaneID() {
-	if sidebarPaneID != "" {
+// InitTopbarPaneID discovers the topbar pane ID if not already cached.
+// Call this from the TUI startup path (inside tmux) so we know which pane is the topbar.
+func InitTopbarPaneID() {
+	if topbarPaneID != "" {
 		return
 	}
-	// The sidebar is always the pane running the bay TUI — which is the current pane.
-	id, err := run("display-message", "-p", "#{pane_id}")
+	// $TMUX_PANE is set by tmux to the ID of the pane this process is running in.
+	// This is reliable regardless of where the client is currently focused.
+	// display-message without -t would return the CLIENT'S active pane, not ours.
+	if id := os.Getenv("TMUX_PANE"); id != "" {
+		topbarPaneID = strings.TrimSpace(id)
+		saveTopbarPaneID(topbarPaneID)
+		return
+	}
+	// Fallback (should not be reached when running inside tmux).
+	id, err := run("display-message", "-t", os.Getenv("TMUX_PANE"), "-p", "#{pane_id}")
 	if err == nil {
-		sidebarPaneID = id
+		topbarPaneID = strings.TrimSpace(id)
+		saveTopbarPaneID(topbarPaneID)
 	}
 }
 
-// SidebarPaneTarget returns a target string for the sidebar pane.
-func SidebarPaneTarget() string {
-	if sidebarPaneID != "" {
-		return sidebarPaneID
+// TopbarPaneTarget returns a target string for the topbar pane.
+func TopbarPaneTarget() string {
+	if topbarPaneID != "" {
+		return topbarPaneID
 	}
 	return MainSession + ":0.0"
 }
@@ -86,9 +152,9 @@ func KillMainSession() error {
 // The window starts with a single shell pane in the given directory.
 func CreateSessionWindow(dir string) (int, error) {
 	// Create window in detached mode, print its index
-	out, err := run("new-window", "-t", MainSession, "-d", "-c", dir, "-P", "-F", "#{window_index}")
+	out, err := run("new-window", "-t", MainSession+":", "-d", "-c", dir, "-P", "-F", "#{window_index}")
 	if err != nil {
-		return 0, fmt.Errorf("new-window: %w", err)
+		return 0, fmt.Errorf("new-window: %w (tmux: %s)", err, out)
 	}
 	idx, err := strconv.Atoi(strings.TrimSpace(out))
 	if err != nil {
@@ -103,22 +169,26 @@ func WindowExists(windowIndex int) bool {
 	return err == nil
 }
 
-// MoveSidebarToWindow breaks the sidebar out of its current window and joins it
-// into the target window at the left side, then resizes to SidebarWidth.
-func MoveSidebarToWindow(windowIndex int) error {
-	target := SidebarPaneTarget()
+// MoveTopbarToWindow moves the topbar pane into the target window at the top.
+func MoveTopbarToWindow(windowIndex int) error {
+	target := TopbarPaneTarget()
 
-	// Break sidebar out of its current window (keeps it as a hidden pane)
-	run("break-pane", "-t", target, "-d", "-s", target)
-
-	// Join sidebar into the target window's first pane, to the left
-	targetPane := fmt.Sprintf("%s:%d.0", MainSession, windowIndex)
-	if _, err := run("join-pane", "-hb", "-t", targetPane, "-s", target, "-l", SidebarWidth); err != nil {
-		return fmt.Errorf("join-pane: %w", err)
+	// Check if topbar is already in the target window — skip move if so.
+	currentWindow, err := run("display-message", "-t", target, "-p", "#{window_index}")
+	if err == nil && strings.TrimSpace(currentWindow) == fmt.Sprintf("%d", windowIndex) {
+		run("resize-pane", "-t", target, "-y", TopbarHeight)
+		return nil
 	}
 
-	// Lock sidebar width
-	run("resize-pane", "-t", SidebarPaneTarget(), "-x", SidebarWidth)
+	targetPane := fmt.Sprintf("%s:%d.0", MainSession, windowIndex)
+
+	// move-pane atomically moves the pane to the target window above the first pane.
+	if out, err := run("move-pane", "-vb", "-s", target, "-t", targetPane, "-l", TopbarHeight); err != nil {
+		return fmt.Errorf("move-pane: %w (tmux: %s)", err, out)
+	}
+
+	// Lock topbar height
+	run("resize-pane", "-t", TopbarPaneTarget(), "-y", TopbarHeight)
 
 	return nil
 }
@@ -135,7 +205,27 @@ func KillWindow(windowIndex int) error {
 	return err
 }
 
-// DevPaneCount returns the number of panes in the given window (including sidebar if present).
+// BreakTopbarToOwnWindow moves the topbar pane into its own detached window.
+// Returns the new window index, or -1 on error.
+// Call this before killing a window that currently contains the topbar pane.
+func BreakTopbarToOwnWindow() int {
+	out, err := run("break-pane", "-d", "-s", TopbarPaneTarget(), "-P", "-F", "#{window_index}")
+	if err != nil {
+		return -1
+	}
+	idx, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return -1
+	}
+	return idx
+}
+
+// SelectWindow switches the tmux client to the given window index.
+func SelectWindow(windowIndex int) {
+	run("select-window", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex))
+}
+
+// DevPaneCount returns the number of panes in the given window (including topbar if present).
 func DevPaneCount(windowIndex int) int {
 	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex), "-F", "#{pane_id}")
 	if err != nil {
@@ -151,13 +241,13 @@ func DevPaneCount(windowIndex int) int {
 }
 
 // AddDevPane creates a new vertical (side-by-side) pane in the specified window.
-// It splits from the rightmost existing pane, then locks the sidebar width.
+// It splits from the rightmost existing pane, then locks the topbar height.
 func AddDevPane(windowIndex int, dir, command string) error {
 	count := DevPaneCount(windowIndex)
 	var target string
 
 	if count <= 1 {
-		// Only sidebar (or empty) — split from pane 0
+		// Only topbar (or empty) — split from pane 0
 		target = fmt.Sprintf("%s:%d.0", MainSession, windowIndex)
 	} else {
 		// Split from the rightmost pane
@@ -172,8 +262,8 @@ func AddDevPane(windowIndex int, dir, command string) error {
 		return fmt.Errorf("split-window: %w", err)
 	}
 
-	// Lock sidebar width
-	run("resize-pane", "-t", SidebarPaneTarget(), "-x", SidebarWidth)
+	// Lock topbar height
+	run("resize-pane", "-t", TopbarPaneTarget(), "-y", TopbarHeight)
 
 	return nil
 }
@@ -203,14 +293,33 @@ func FocusDevPane(windowIndex int) error {
 	return err
 }
 
-// FocusSidebarPane moves focus to the sidebar pane.
-func FocusSidebarPane() error {
-	_, err := run("select-pane", "-t", SidebarPaneTarget())
+// FocusTopbarPane moves focus to the topbar pane.
+func FocusTopbarPane() error {
+	_, err := run("select-pane", "-t", TopbarPaneTarget())
 	return err
+}
+
+// FocusBelowTopbar moves focus to the pane below the topbar.
+func FocusBelowTopbar() error {
+	_, err := run("select-pane", "-D")
+	return err
+}
+
+// RunnerFunc is a function that executes tmux commands. Used for testing.
+type RunnerFunc func(args ...string) (string, error)
+
+// BindKeysWithRunner sets up tmux options using the provided runner function.
+// This allows testing without a real tmux server.
+func BindKeysWithRunner(runner RunnerFunc) error {
+	return bindKeysImpl(runner)
 }
 
 // BindKeys sets up tmux options for the bay session.
 func BindKeys() error {
+	return bindKeysImpl(run)
+}
+
+func bindKeysImpl(run RunnerFunc) error {
 	// Mouse
 	run("set-option", "-g", "mouse", "on")
 
@@ -222,17 +331,20 @@ func BindKeys() error {
 
 	// Status bar styling
 	run("set-option", "-g", "status-style", "bg=#1F2937,fg=#9CA3AF")
-	run("set-option", "-g", "status-left", " bay ")
-	run("set-option", "-g", "status-left-style", "bg=#374151,fg=#06B6D4,bold")
+	run("set-option", "-g", "status-left", " #{?client_prefix,⌘ CMD, bay} ")
+	run("set-option", "-g", "status-left-style", "#{?client_prefix,bg=#7C3AED fg=#F9FAFB bold,bg=#374151 fg=#06B6D4 bold}")
 	run("set-option", "-g", "status-right", "")
 	run("set-option", "-g", "window-status-current-style", "fg=#06B6D4,bold")
 	run("set-option", "-g", "window-status-style", "fg=#6B7280")
 
-	// Hook: re-lock sidebar width whenever a pane is closed.
-	// Use the cached pane ID to target sidebar regardless of which window it's in.
-	sidebarTarget := SidebarPaneTarget()
+	// Shell snippet that resolves the topbar pane ID at runtime from the persisted file.
+	// This stays correct even after the topbar moves between windows.
+	topbarIDFile := "$HOME/.bay/.topbar-pane-id"
+	resizeTopbar := fmt.Sprintf("tmux resize-pane -t $(cat %s) -y %s 2>/dev/null || true", topbarIDFile, TopbarHeight)
+
+	// Hook: re-lock topbar height whenever a pane is closed.
 	run("set-hook", "-g", "after-kill-pane",
-		fmt.Sprintf("run-shell 'tmux resize-pane -t %s -x %s 2>/dev/null || true'", sidebarTarget, SidebarWidth))
+		fmt.Sprintf("run-shell '%s'", resizeTopbar))
 
 	// Backtick as a second prefix
 	run("set-option", "-g", "prefix2", "`")
@@ -247,22 +359,44 @@ func BindKeys() error {
 	run("bind-key", "-r", "Up", "select-pane", "-U")
 	run("bind-key", "-r", "Down", "select-pane", "-D")
 
-	// d/D for splits — preserve sidebar width. Use pane_id for sidebar target.
+	// d/D for splits — read topbar pane ID at runtime so it works after moves.
 	run("bind-key", "-r", "d", "run-shell",
-		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' && tmux resize-pane -t %s -x %s", sidebarTarget, SidebarWidth))
+		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' && %s", resizeTopbar))
 	run("bind-key", "-r", "D", "run-shell",
-		fmt.Sprintf("tmux split-window -v -c '#{pane_current_path}' && tmux resize-pane -t %s -x %s", sidebarTarget, SidebarWidth))
+		fmt.Sprintf("tmux split-window -v -c '#{pane_current_path}' && %s", resizeTopbar))
 
-	// w to close pane (won't close sidebar)
+	// a for agent split — vertical split running claude in same dir
+	run("bind-key", "-r", "a", "run-shell",
+		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' 'claude' && %s", resizeTopbar))
+
+	// w to close pane — guard by comparing pane_id against topbar's persisted ID.
 	run("bind-key", "-r", "w", "if-shell",
-		"[ #{pane_index} -ne 0 ]",
-		fmt.Sprintf("run-shell 'tmux kill-pane && tmux resize-pane -t %s -x %s'", sidebarTarget, SidebarWidth))
+		fmt.Sprintf("[ \"#{pane_id}\" != \"$(cat %s)\" ]", topbarIDFile),
+		fmt.Sprintf("run-shell 'tmux kill-pane && %s'", resizeTopbar))
 
-	// s to toggle focus between sidebar and dev panes
+	// s to toggle focus between topbar and dev panes
 	run("bind-key", "-r", "s", "if-shell",
 		"[ #{pane_index} -eq 0 ]",
-		"select-pane -R",
-		fmt.Sprintf("select-pane -t %s", sidebarTarget))
+		"select-pane -D",
+		"select-pane -t .0")
+
+	// Quick-access keybinds: send keys to topbar pane (pane 0 of current window)
+	// Use .0 to dynamically target pane index 0 in the active window.
+	// `+q → focus topbar and toggle focused mode
+	run("bind-key", "q", "run-shell",
+		"tmux send-keys -t .0 q; tmux select-pane -t .0")
+
+	// `+Tab → cycle session (repeatable: `+Tab+Tab+Tab...)
+	run("bind-key", "-r", "Tab", "send-keys", "-t", ".0", "Tab")
+
+	// `+r → cycle repo
+	run("bind-key", "r", "send-keys", "-t", ".0", "r")
+
+	// `+0-9 → jump to session by index
+	for i := 0; i <= 9; i++ {
+		key := fmt.Sprintf("%d", i)
+		run("bind-key", key, "send-keys", "-t", ".0", key)
+	}
 
 	return nil
 }

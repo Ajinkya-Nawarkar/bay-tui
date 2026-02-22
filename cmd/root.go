@@ -27,18 +27,13 @@ func Root() error {
 		}
 	}
 
-	// If we're already inside tmux, run the TUI directly (--tui mode)
-	if os.Getenv("TMUX") != "" {
-		return runTUI()
-	}
-
-	// Get the bay binary path for the sidebar command
+	// Get the bay binary path for the topbar command
 	bayBin, err := os.Executable()
 	if err != nil {
 		bayBin = "bay"
 	}
 
-	// Create the bay tmux session with sidebar layout if it doesn't exist
+	// Create (or respawn) the bay tmux session with topbar layout
 	if err := baytmux.CreateMainSession(bayBin + " --tui"); err != nil {
 		return fmt.Errorf("creating bay session: %w", err)
 	}
@@ -46,14 +41,21 @@ func Root() error {
 	// Set up tmux keybindings
 	baytmux.BindKeys()
 
+	// If already inside tmux, switch client to bay session instead of attaching
+	if os.Getenv("TMUX") != "" {
+		cmd := exec.Command("tmux", "switch-client", "-t", baytmux.MainSession)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+
 	// Attach to the bay session (blocks until detach/exit)
 	cmd := exec.Command("tmux", "attach-session", "-t", baytmux.MainSession)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	attachErr := cmd.Run()
-
-	return attachErr
+	return cmd.Run()
 }
 
 // RunTUIDirectly loads config and runs the TUI (for --tui flag).
@@ -80,7 +82,7 @@ func runTUI() error {
 	}
 
 	app := tui.NewApp(cfg, firstRun)
-	p := tea.NewProgram(app, tea.WithAltScreen())
+	p := tea.NewProgram(app)
 	if _, err := p.Run(); err != nil {
 		return err
 	}

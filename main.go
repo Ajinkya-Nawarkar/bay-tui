@@ -74,7 +74,7 @@ func printHelp() {
 	help := "bay — Developer Session & Agent Hub\n" +
 		"\n" +
 		"Usage:\n" +
-		"  bay              Launch bay (opens sidebar in tmux)\n" +
+		"  bay              Launch bay (opens top bar in tmux)\n" +
 		"  bay setup        Run the setup wizard\n" +
 		"  bay ls           List all sessions\n" +
 		"  bay kill <name>  Kill a session\n" +
@@ -82,23 +82,20 @@ func printHelp() {
 		"  bay build        Rebuild bay from latest source\n" +
 		"  bay help         Show this help\n" +
 		"\n" +
-		"Sidebar keybindings:\n" +
-		"  n       New session\n" +
-		"  d       Delete session\n" +
-		"  r       Rename session\n" +
-		"  Enter   Switch to session\n" +
-		"  c       Add Claude Code pane\n" +
-		"  Tab     Expand/collapse repo\n" +
-		"  j/k     Navigate\n" +
-		"  s       Re-run setup\n" +
-		"  q       Quit\n" +
+		"Top bar (` prefix):\n" +
+		"  `+Tab   Cycle session    `+0-9   Jump to session\n" +
+		"  `+r     Cycle repo       `+q     Toggle focus mode\n" +
+		"\n" +
+		"Focused mode (`+q to enter, esc to leave):\n" +
+		"  h/l     Switch repo      n/d/R   New/delete/rename session\n" +
+		"  Enter   Activate session\n" +
 		"\n" +
 		"Pane management (` then):\n" +
 		"  Arrow           Navigate panes\n" +
-		"  D               Vertical split\n" +
-		"  Shift+D         Horizontal split\n" +
-		"  W               Close pane\n" +
-		"  S               Toggle sidebar/dev focus\n" +
+		"  d               Vertical split\n" +
+		"  D               Horizontal split\n" +
+		"  w               Close pane\n" +
+		"  s               Toggle topbar/dev focus\n" +
 		"  ``              Type a literal backtick\n" +
 		"  Click           Focus any pane"
 	fmt.Println(help)
