@@ -11,7 +11,7 @@ func main() {
 	args := os.Args[1:]
 
 	if len(args) == 0 {
-		if err := cmd.Root(); err != nil {
+		if err := cmd.Root(false); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -19,6 +19,12 @@ func main() {
 	}
 
 	switch args[0] {
+	case "-f", "--fresh":
+		if err := cmd.Root(true); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
 	case "--tui":
 		// Internal flag: run TUI directly (called from within tmux)
 		if err := cmd.RunTUIDirectly(); err != nil {
@@ -56,6 +62,12 @@ func main() {
 
 	case "build":
 		if err := cmd.Build(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "uninstall":
+		if err := cmd.Uninstall(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -99,11 +111,13 @@ func printHelp() {
 		"\n" +
 		"Usage:\n" +
 		"  bay              Launch bay (opens top bar in tmux)\n" +
+		"  bay -f           Fresh start (kill existing session, relaunch)\n" +
 		"  bay setup        Run the setup wizard\n" +
 		"  bay ls           List all sessions\n" +
 		"  bay kill <name>  Kill a session\n" +
 		"  bay keybinds     Show keybind reference and terminal setup tips\n" +
 		"  bay build        Rebuild bay from latest source\n" +
+		"  bay uninstall    Remove all bay data and Claude hooks\n" +
 		"  bay help         Show this help\n" +
 		"\n" +
 		"Memory:\n" +

@@ -14,10 +14,15 @@ import (
 )
 
 // Root is the main `bay` command handler.
-func Root() error {
+// If fresh is true, kills the existing bay session first.
+func Root(fresh bool) error {
 	// Check tmux is installed
 	if _, err := exec.LookPath("tmux"); err != nil {
 		return fmt.Errorf("tmux is required but not found. Install with: brew install tmux")
+	}
+
+	if fresh && baytmux.SessionExists(baytmux.MainSession) {
+		baytmux.KillMainSession()
 	}
 
 	firstRun := !config.Exists()
