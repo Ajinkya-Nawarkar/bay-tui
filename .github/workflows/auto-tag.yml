@@ -1,0 +1,48 @@
+name: Auto Tag
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: latest
+        run: |
+          tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version
+        id: bump
+        run: |
+          current="${{ steps.latest.outputs.tag }}"
+          major=$(echo "$current" | sed 's/v//' | cut -d. -f1)
+          minor=$(echo "$current" | sed 's/v//' | cut -d. -f2)
+          patch=$(echo "$current" | sed 's/v//' | cut -d. -f3)
+
+          # feat: = minor bump, everything else = patch bump
+          msg=$(git log -1 --pretty=%s)
+          if echo "$msg" | grep -q "^feat"; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+
+          new="v${major}.${minor}.${patch}"
+          echo "version=$new" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag
+        run: |
+          git tag "${{ steps.bump.outputs.version }}"
+          git push origin "${{ steps.bump.outputs.version }}"
