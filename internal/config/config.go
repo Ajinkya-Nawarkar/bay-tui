@@ -77,6 +77,11 @@ func Save(cfg *Config) error {
 	return os.WriteFile(ConfigPath(), data, 0644)
 }
 
+// DBPath returns the path to ~/.bay/bay.db
+func DBPath() string {
+	return filepath.Join(BayDir(), "bay.db")
+}
+
 // DefaultConfig returns a config with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
@@ -87,5 +92,19 @@ func DefaultConfig() *Config {
 			Agent:            "claude",
 			WorktreeLocation: "managed",
 		},
+		Memory: DefaultMemoryConfig(),
+	}
+}
+
+// DefaultMemoryConfig returns memory config with all features enabled except CrossRepoContext.
+func DefaultMemoryConfig() MemoryConfig {
+	return MemoryConfig{
+		Enabled:          true,
+		EpisodicLogging:  true,
+		AutoSummarize:    true,
+		ContextInjection: true,
+		SiblingContext:   true,
+		RulesInjection:   true,
+		CrossRepoContext: false,
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/scanner"
+	"bay/internal/scanner"
 )
 
 func TestScanFindsGitRepos(t *testing.T) {

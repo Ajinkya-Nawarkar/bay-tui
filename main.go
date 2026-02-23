@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/cmd"
+	"bay/cmd"
 )
 
 func main() {
@@ -60,6 +60,30 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "mem":
+		if err := cmd.Mem(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "search":
+		if err := cmd.Search(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "context":
+		if err := cmd.Context(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "rules":
+		if err := cmd.Rules(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
 	case "help", "--help", "-h":
 		printHelp()
 
@@ -82,13 +106,24 @@ func printHelp() {
 		"  bay build        Rebuild bay from latest source\n" +
 		"  bay help         Show this help\n" +
 		"\n" +
+		"Memory:\n" +
+		"  bay mem show [session]   Show working memory state\n" +
+		"  bay mem task \"desc\"      Set current task\n" +
+		"  bay mem note \"text\"      Add note to episodic log\n" +
+		"  bay mem log [-n 50]      Show episodic log\n" +
+		"  bay mem clear [session]  Clear session memory\n" +
+		"  bay mem config           Show/toggle memory features\n" +
+		"  bay search \"query\"       Full-text search across all sessions\n" +
+		"  bay context              Output session context (Claude hook)\n" +
+		"  bay rules ls|add|rm|toggle  Manage context injection rules\n" +
+		"\n" +
 		"Top bar (` prefix):\n" +
 		"  `+Tab   Cycle session    `+0-9   Jump to session\n" +
 		"  `+r     Cycle repo       `+q     Toggle focus mode\n" +
 		"\n" +
 		"Focused mode (`+q to enter, esc to leave):\n" +
 		"  h/l     Switch repo      n/d/R   New/delete/rename session\n" +
-		"  Enter   Activate session\n" +
+		"  m       Memory viewer    Enter   Activate session\n" +
 		"\n" +
 		"Pane management (` then):\n" +
 		"  Arrow           Navigate panes\n" +

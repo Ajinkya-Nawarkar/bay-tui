@@ -7,9 +7,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
-	baytmux "github.com/Ajinkya-Nawarkar/bay-tui/internal/tmux"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui"
+	"bay/internal/config"
+	"bay/internal/memory"
+	baytmux "bay/internal/tmux"
+	"bay/internal/tui"
 )
 
 // Root is the main `bay` command handler.
@@ -80,6 +81,9 @@ func runTUI() error {
 			return err
 		}
 	}
+
+	// Process any pending LLM summaries from prior crashes/restarts
+	go memory.ProcessPendingSummaries()
 
 	app := tui.NewApp(cfg, firstRun)
 	p := tea.NewProgram(app)

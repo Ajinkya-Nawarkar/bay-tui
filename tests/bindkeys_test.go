@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	baytmux "github.com/Ajinkya-Nawarkar/bay-tui/internal/tmux"
+	baytmux "bay/internal/tmux"
 )
 
 // capturedCmd records a single tmux command invocation.

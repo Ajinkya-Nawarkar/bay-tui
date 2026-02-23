@@ -3,9 +3,10 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/session"
-	baytmux "github.com/Ajinkya-Nawarkar/bay-tui/internal/tmux"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/worktree"
+	"bay/internal/hooks"
+	"bay/internal/session"
+	baytmux "bay/internal/tmux"
+	"bay/internal/worktree"
 )
 
 // Kill destroys a bay session by name (removes YAML + worktree).
@@ -26,6 +27,9 @@ func Kill(name string) error {
 			fmt.Printf("Warning: worktree cleanup failed: %v\n", err)
 		}
 	}
+
+	// Clean up memory before deleting session file
+	hooks.OnSessionDelete(name)
 
 	// Delete session file
 	if err := session.Delete(name); err != nil {
