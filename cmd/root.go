@@ -7,9 +7,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/anawarkar/bay/internal/config"
-	baytmux "github.com/anawarkar/bay/internal/tmux"
-	"github.com/anawarkar/bay/internal/tui"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
+	baytmux "github.com/Ajinkya-Nawarkar/bay-tui/internal/tmux"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui"
 )
 
 // Root is the main `bay` command handler.

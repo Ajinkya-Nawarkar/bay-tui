@@ -3,11 +3,11 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/anawarkar/bay/internal/config"
-	"github.com/anawarkar/bay/internal/scanner"
-	"github.com/anawarkar/bay/internal/tui/create"
-	"github.com/anawarkar/bay/internal/tui/setup"
-	"github.com/anawarkar/bay/internal/tui/topbar"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/scanner"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui/create"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui/setup"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui/topbar"
 )
 
 type screen int

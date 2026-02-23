@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/anawarkar/bay/internal/config"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
 	"gopkg.in/yaml.v3"
 )
 

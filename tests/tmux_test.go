@@ -3,7 +3,7 @@ package tests
 import (
 	"testing"
 
-	baytmux "github.com/anawarkar/bay/internal/tmux"
+	baytmux "github.com/Ajinkya-Nawarkar/bay-tui/internal/tmux"
 )
 
 func TestConstants(t *testing.T) {

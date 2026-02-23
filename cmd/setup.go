@@ -5,8 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/anawarkar/bay/internal/config"
-	"github.com/anawarkar/bay/internal/tui/setup"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui/setup"
 )
 
 // Setup runs the setup wizard standalone.

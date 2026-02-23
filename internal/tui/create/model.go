@@ -7,9 +7,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/anawarkar/bay/internal/scanner"
-	"github.com/anawarkar/bay/internal/session"
-	"github.com/anawarkar/bay/internal/worktree"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/scanner"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/session"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/worktree"
 )
 
 type createStep int

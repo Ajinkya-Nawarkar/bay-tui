@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/anawarkar/bay/internal/config"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
 )
 
 type step int

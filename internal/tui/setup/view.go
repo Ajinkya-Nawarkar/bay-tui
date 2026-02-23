@@ -3,7 +3,7 @@ package setup
 import (
 	"fmt"
 
-	"github.com/anawarkar/bay/internal/tui/styles"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui/styles"
 )
 
 // View renders the setup wizard.

@@ -1,4 +1,4 @@
-module github.com/anawarkar/bay
+module github.com/Ajinkya-Nawarkar/bay-tui
 
 go 1.25.0
 

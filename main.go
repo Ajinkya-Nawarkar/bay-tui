@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/anawarkar/bay/cmd"
+	"github.com/Ajinkya-Nawarkar/bay-tui/cmd"
 )
 
 func main() {

@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/anawarkar/bay/internal/session"
-	baytmux "github.com/anawarkar/bay/internal/tmux"
-	"github.com/anawarkar/bay/internal/worktree"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/session"
+	baytmux "github.com/Ajinkya-Nawarkar/bay-tui/internal/tmux"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/worktree"
 )
 
 // Kill destroys a bay session by name (removes YAML + worktree).

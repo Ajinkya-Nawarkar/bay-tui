@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/anawarkar/bay/internal/config"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
 )
 
 // WorktreePath returns the managed worktree path for a repo and branch.

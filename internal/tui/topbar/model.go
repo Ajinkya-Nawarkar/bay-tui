@@ -7,11 +7,11 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/anawarkar/bay/internal/config"
-	"github.com/anawarkar/bay/internal/scanner"
-	"github.com/anawarkar/bay/internal/session"
-	baytmux "github.com/anawarkar/bay/internal/tmux"
-	"github.com/anawarkar/bay/internal/worktree"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/scanner"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/session"
+	baytmux "github.com/Ajinkya-Nawarkar/bay-tui/internal/tmux"
+	"github.com/Ajinkya-Nawarkar/bay-tui/internal/worktree"
 )
 
 type mode int
