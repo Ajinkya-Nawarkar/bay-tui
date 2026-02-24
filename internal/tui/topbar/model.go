@@ -7,11 +7,12 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/scanner"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/session"
-	baytmux "github.com/Ajinkya-Nawarkar/bay-tui/internal/tmux"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/worktree"
+	"bay/internal/config"
+	"bay/internal/hooks"
+	"bay/internal/scanner"
+	"bay/internal/session"
+	baytmux "bay/internal/tmux"
+	"bay/internal/worktree"
 )
 
 type mode int
@@ -35,6 +36,11 @@ func clearStatusAfter(d time.Duration) tea.Cmd {
 
 // SwitchToSetupMsg tells the app to switch to setup screen.
 type SwitchToSetupMsg struct{}
+
+// SwitchToMemoryMsg tells the app to switch to memory viewer.
+type SwitchToMemoryMsg struct {
+	SessionName string
+}
 
 // Model is the topbar screen state.
 type Model struct {
@@ -206,6 +212,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "n":
 			repo := m.activeRepoName()
 			return m, func() tea.Msg { return SwitchToCreateMsg{PreselectedRepo: repo} }
+		case "m":
+			session := m.activeSession
+			if session == "" {
+				m.statusMsg = "No active session"
+				return m, nil
+			}
+			return m, func() tea.Msg { return SwitchToMemoryMsg{SessionName: session} }
 		case "d":
 			return m.startDelete()
 		case "R":
@@ -309,6 +322,14 @@ func (m Model) activateSession(s *session.Session) (tea.Model, tea.Cmd) {
 
 // switchToSession handles tmux window management for activating a session.
 func (m *Model) switchToSession(s *session.Session) error {
+	// Deactivate previous session (capture buffers, log event)
+	if m.activeSession != "" && m.activeSession != s.Name {
+		prevSession, err := session.Load(m.activeSession)
+		if err == nil {
+			hooks.OnSessionDeactivate(m.activeSession, prevSession.RepoPath, m.activeWindowIdx)
+		}
+	}
+
 	windowIdx := s.TmuxWindow
 
 	if windowIdx == 0 || !baytmux.WindowExists(windowIdx) {
@@ -333,6 +354,10 @@ func (m *Model) switchToSession(s *session.Session) error {
 
 	m.activeSession = s.Name
 	m.activeWindowIdx = windowIdx
+
+	// Activate new session (update working state, log event)
+	hooks.OnSessionActivate(s.Name, s.Repo, s.WorkingDir)
+
 	return nil
 }
 
@@ -363,6 +388,7 @@ func (m Model) updateConfirmDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				worktree.Remove(s.RepoPath, s.Repo, s.WorktreeBranch)
 			}
 		}
+		hooks.OnSessionDelete(m.deleteTarget)
 		session.Delete(m.deleteTarget)
 		if m.activeSession == m.deleteTarget {
 			m.activeSession = ""
@@ -427,6 +453,7 @@ func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if err := session.Rename(oldName, newName); err != nil {
 				m.statusMsg = fmt.Sprintf("Rename error: %v", err)
 			} else {
+				hooks.OnSessionRename(oldName, newName)
 				if m.activeSession == oldName {
 					m.activeSession = newName
 				}

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/worktree"
+	"bay/internal/worktree"
 )
 
 func TestWorktreePath(t *testing.T) {

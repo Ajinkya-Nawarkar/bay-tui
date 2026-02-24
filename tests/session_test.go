@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/session"
+	"bay/internal/config"
+	"bay/internal/session"
 )
 
 func setupSessionTest(t *testing.T) func() {

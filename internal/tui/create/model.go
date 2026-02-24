@@ -7,9 +7,10 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/scanner"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/session"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/worktree"
+	"bay/internal/hooks"
+	"bay/internal/scanner"
+	"bay/internal/session"
+	"bay/internal/worktree"
 )
 
 type createStep int
@@ -208,6 +209,8 @@ func (m *Model) createSession(name string) tea.Cmd {
 		if err := session.Save(s); err != nil {
 			return errMsg{err}
 		}
+
+		hooks.OnSessionCreate(s.Name, s.Repo, s.WorkingDir)
 
 		return sessionCreatedMsg{session: s}
 	}

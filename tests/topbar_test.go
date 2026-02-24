@@ -5,8 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui/topbar"
+	"bay/internal/config"
+	"bay/internal/tui/topbar"
 )
 
 // newTestTopbar creates a topbar model with empty config (no scan dirs = no repos).

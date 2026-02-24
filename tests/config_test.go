@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
+	"bay/internal/config"
 )
 
 func TestDefaultConfig(t *testing.T) {

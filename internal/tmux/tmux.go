@@ -383,8 +383,9 @@ func bindKeysImpl(run RunnerFunc) error {
 		fmt.Sprintf("tmux split-window -v -c '#{pane_current_path}' && %s", resizeTopbar))
 
 	// a for agent split — vertical split running claude in same dir
+	// Uses bash -c so Claude Code's SessionStart hook (bay context) fires correctly.
 	run("bind-key", "-r", "a", "run-shell",
-		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' 'claude' && %s", resizeTopbar))
+		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' 'bash -c \"claude\"' && %s", resizeTopbar))
 
 	// w to close pane — guard by comparing pane_id against topbar's persisted ID.
 	run("bind-key", "-r", "w", "if-shell",
@@ -415,7 +416,47 @@ func bindKeysImpl(run RunnerFunc) error {
 		run("bind-key", key, "send-keys", "-t", ".0", key)
 	}
 
+	// Memory hooks: capture pane buffer on pane exit for episodic recording
+	run("set-hook", "-g", "pane-exited",
+		"run-shell 'bay mem capture #{pane_id} &'")
+
 	return nil
+}
+
+// CapturePaneBuffer captures the last N lines of a pane's scrollback.
+func CapturePaneBuffer(paneID string, lines int) (string, error) {
+	startLine := fmt.Sprintf("-%d", lines)
+	out, err := run("capture-pane", "-p", "-t", paneID, "-S", startLine)
+	if err != nil {
+		return "", fmt.Errorf("capture-pane %s: %w", paneID, err)
+	}
+	return out, nil
+}
+
+// CaptureAllDevPanes captures all non-topbar pane buffers in a window.
+func CaptureAllDevPanes(windowIndex, lines int) (map[string]string, error) {
+	// List all panes in the window
+	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex), "-F", "#{pane_id}")
+	if err != nil {
+		return nil, fmt.Errorf("list-panes: %w", err)
+	}
+
+	topbarID := TopbarPaneTarget()
+	result := make(map[string]string)
+
+	for _, line := range strings.Split(out, "\n") {
+		paneID := strings.TrimSpace(line)
+		if paneID == "" || paneID == topbarID {
+			continue
+		}
+		buffer, err := CapturePaneBuffer(paneID, lines)
+		if err != nil {
+			continue
+		}
+		result[paneID] = buffer
+	}
+
+	return result, nil
 }
 
 // ListBaySessions is kept for compatibility.

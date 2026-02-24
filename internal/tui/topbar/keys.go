@@ -15,6 +15,7 @@ type keyMap struct {
 	Down   key.Binding
 	Enter  key.Binding
 	New    key.Binding
+	Memory key.Binding
 	Delete key.Binding
 	Rename key.Binding
 	Escape key.Binding
@@ -56,6 +57,10 @@ var keys = keyMap{
 	New: key.NewBinding(
 		key.WithKeys("n"),
 		key.WithHelp("n", "new session"),
+	),
+	Memory: key.NewBinding(
+		key.WithKeys("m"),
+		key.WithHelp("m", "memory"),
 	),
 	Delete: key.NewBinding(
 		key.WithKeys("d"),

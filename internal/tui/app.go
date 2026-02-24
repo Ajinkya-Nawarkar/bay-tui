@@ -3,11 +3,12 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/scanner"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui/create"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui/setup"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui/topbar"
+	"bay/internal/config"
+	"bay/internal/scanner"
+	"bay/internal/tui/create"
+	tmemory "bay/internal/tui/memory"
+	"bay/internal/tui/setup"
+	"bay/internal/tui/topbar"
 )
 
 type screen int
@@ -16,6 +17,7 @@ const (
 	screenTopbar screen = iota
 	screenSetup
 	screenCreate
+	screenMemory
 )
 
 // App is the root Bubbletea model that switches between screens.
@@ -24,6 +26,7 @@ type App struct {
 	topbar      topbar.Model
 	setupModel  setup.Model
 	createModel create.Model
+	memoryModel tmemory.Model
 	cfg         *config.Config
 	firstRun    bool
 }
@@ -95,6 +98,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case create.CancelMsg:
 		a.screen = screenTopbar
 		return a, nil
+
+	case topbar.SwitchToMemoryMsg:
+		a.memoryModel = tmemory.New(msg.SessionName)
+		a.screen = screenMemory
+		return a, a.memoryModel.Init()
+
+	case tmemory.BackMsg:
+		a.screen = screenTopbar
+		a.topbar.Refresh()
+		return a, nil
 	}
 
 	// Route to active screen
@@ -119,6 +132,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.createModel = m.(create.Model)
 			return a, cmd
 		}
+
+	case screenMemory:
+		switch msg.(type) {
+		case tmemory.BackMsg:
+			// Already handled above
+		default:
+			m, cmd := a.memoryModel.Update(msg)
+			a.memoryModel = m.(tmemory.Model)
+			return a, cmd
+		}
 	}
 
 	return a, nil
@@ -131,6 +154,8 @@ func (a App) View() string {
 		return a.setupModel.View()
 	case screenCreate:
 		return a.createModel.View()
+	case screenMemory:
+		return a.memoryModel.View()
 	default:
 		return a.topbar.View()
 	}

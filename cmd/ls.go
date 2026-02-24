@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/session"
+	"bay/internal/session"
 )
 
 // Ls lists all bay sessions.

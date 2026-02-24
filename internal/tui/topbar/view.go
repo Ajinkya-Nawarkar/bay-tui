@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui/styles"
+	"bay/internal/tui/styles"
 )
 
 // View renders the topbar.

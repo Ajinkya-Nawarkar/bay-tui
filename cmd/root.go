@@ -7,16 +7,22 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/config"
-	baytmux "github.com/Ajinkya-Nawarkar/bay-tui/internal/tmux"
-	"github.com/Ajinkya-Nawarkar/bay-tui/internal/tui"
+	"bay/internal/config"
+	"bay/internal/memory"
+	baytmux "bay/internal/tmux"
+	"bay/internal/tui"
 )
 
 // Root is the main `bay` command handler.
-func Root() error {
+// If fresh is true, kills the existing bay session first.
+func Root(fresh bool) error {
 	// Check tmux is installed
 	if _, err := exec.LookPath("tmux"); err != nil {
 		return fmt.Errorf("tmux is required but not found. Install with: brew install tmux")
+	}
+
+	if fresh && baytmux.SessionExists(baytmux.MainSession) {
+		baytmux.KillMainSession()
 	}
 
 	firstRun := !config.Exists()
@@ -80,6 +86,9 @@ func runTUI() error {
 			return err
 		}
 	}
+
+	// Process any pending LLM summaries from prior crashes/restarts
+	go memory.ProcessPendingSummaries()
 
 	app := tui.NewApp(cfg, firstRun)
 	p := tea.NewProgram(app)
