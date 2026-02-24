@@ -525,8 +525,12 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 		var command string
 		if p.Type == "agent" {
 			if p.ClaudeSessionID != "" {
-				// Try resume, fall back to fresh claude if it fails
-				command = fmt.Sprintf("bash -c \"claude --resume --session-id %s || claude\"", p.ClaudeSessionID)
+				// Try resume; on failure, set BAY_PRIOR_AGENT so bay context
+				// injects only this agent's summary (not all agents')
+				command = fmt.Sprintf(
+					"bash -c \"claude --resume --session-id %s || (export BAY_PRIOR_AGENT=%s && claude)\"",
+					p.ClaudeSessionID, p.ClaudeSessionID,
+				)
 			} else {
 				// Fresh Claude — SessionStart hook provides context injection
 				command = "bash -c \"claude\""

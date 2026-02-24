@@ -40,7 +40,11 @@ func Context() error {
 		return nil
 	}
 
-	ctx, err := memory.RenderContext(s.Name)
+	// If BAY_PRIOR_AGENT is set, this is a cold boot fallback —
+	// filter context to only this agent's prior summaries
+	priorAgent := os.Getenv("BAY_PRIOR_AGENT")
+
+	ctx, err := memory.RenderContextForAgent(s.Name, priorAgent)
 	if err != nil {
 		return nil
 	}

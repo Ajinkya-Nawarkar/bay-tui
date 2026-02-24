@@ -454,3 +454,57 @@ func TestSessionHistoryGroupsByAgent(t *testing.T) {
 		t.Error("expected agent grouping headers for multi-agent Session History")
 	}
 }
+
+func TestPerAgentContextInjection(t *testing.T) {
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	w := &memory.WorkingState{SessionID: "s1", Repo: "myrepo", LastSummary: "session-level summary"}
+	memory.UpsertWorkingDB(d, w)
+
+	// 3 agents with different summaries
+	memory.AppendEpisodicDB(d, "s1", "summary", "Agent A: built auth system", "", "agent-a")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Agent B: wrote unit tests", "", "agent-b")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Agent C: set up CI pipeline", "", "agent-c")
+	// Each agent has older history too
+	memory.AppendEpisodicDB(d, "s1", "summary", "Agent A: latest auth work", "", "agent-a")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Agent B: latest test work", "", "agent-b")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Agent C: latest CI work", "", "agent-c")
+
+	// Filter to agent-a: should see only agent-a's summary
+	ctx, err := memory.RenderContextDBForAgent(d, "s1", "agent-a")
+	if err != nil {
+		t.Fatalf("RenderContextDBForAgent failed: %v", err)
+	}
+
+	// Last Summary should be agent-a specific, not session-level
+	if strings.Contains(ctx, "session-level summary") {
+		t.Error("per-agent context should use agent-specific summary, not session-level")
+	}
+	if !strings.Contains(ctx, "Agent A: latest auth work") {
+		t.Error("expected agent-a's latest summary as Last Summary")
+	}
+
+	// Session History should only contain agent-a entries
+	if strings.Contains(ctx, "Agent B") {
+		t.Error("agent-a context should not contain agent-b summaries")
+	}
+	if strings.Contains(ctx, "Agent C") {
+		t.Error("agent-a context should not contain agent-c summaries")
+	}
+	if !strings.Contains(ctx, "Agent A: built auth system") {
+		t.Error("agent-a context should contain its own history")
+	}
+
+	// Filter to agent-b: should see only agent-b
+	ctx2, _ := memory.RenderContextDBForAgent(d, "s1", "agent-b")
+	if strings.Contains(ctx2, "Agent A") {
+		t.Error("agent-b context should not contain agent-a summaries")
+	}
+	if !strings.Contains(ctx2, "Agent B: latest test work") {
+		t.Error("expected agent-b's latest summary")
+	}
+}
