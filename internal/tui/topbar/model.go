@@ -191,6 +191,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Focused-only keybinds
 		switch key {
+		case "Q":
+			baytmux.KillMainSession()
+			return m, tea.Quit
 		case "esc":
 			m.focused = false
 			m.statusMsg = ""

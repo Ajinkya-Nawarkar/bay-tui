@@ -50,6 +50,27 @@ func TestTopbarQTogglesFocus(t *testing.T) {
 	}
 }
 
+func TestTopbarShiftQQuits(t *testing.T) {
+	m := newTestTopbar()
+
+	// Enter focus
+	m = sendKey(m, "q")
+	if !m.IsFocused() {
+		t.Fatal("q should enter focus mode")
+	}
+
+	// Q (shift) while focused should return tea.Quit
+	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Q")})
+	_ = result
+	if cmd == nil {
+		t.Fatal("Q in focused mode should return a command")
+	}
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Errorf("Q in focused mode should return tea.QuitMsg, got %T", msg)
+	}
+}
+
 func TestTopbarIgnoresKeysWhenUnfocused(t *testing.T) {
 	m := newTestTopbar()
 
