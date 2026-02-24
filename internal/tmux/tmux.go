@@ -525,8 +525,8 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 		var command string
 		if p.Type == "agent" {
 			if p.ClaudeSessionID != "" {
-				// Resume previous Claude conversation
-				command = fmt.Sprintf("bash -c \"claude --resume --session-id %s\"", p.ClaudeSessionID)
+				// Try resume, fall back to fresh claude if it fails
+				command = fmt.Sprintf("bash -c \"claude --resume --session-id %s || claude\"", p.ClaudeSessionID)
 			} else {
 				// Fresh Claude — SessionStart hook provides context injection
 				command = "bash -c \"claude\""
