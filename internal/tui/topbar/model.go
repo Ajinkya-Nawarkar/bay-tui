@@ -155,10 +155,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// q toggles focus — only reachable via `+q prefix binding
 		if key == "q" {
 			m.focused = !m.focused
-			m.focusRow = 0
 			m.statusMsg = ""
 			if !m.focused {
+				m.focusRow = 0
 				return m, unfocusCmd
+			}
+			// Default to sessions row with the active session selected
+			sessions := m.activeRepoSessions()
+			if len(sessions) > 0 {
+				m.focusRow = 1
+				for i, s := range sessions {
+					if s.Name == m.activeSession {
+						m.selectedSessionIdx = i
+						break
+					}
+				}
+			} else {
+				m.focusRow = 0
 			}
 			return m, nil
 		}
