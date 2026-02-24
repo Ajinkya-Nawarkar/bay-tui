@@ -499,7 +499,9 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 			continue
 		}
 
-		isAgent := strings.Contains(command, "claude") || strings.Contains(command, "node")
+		// Check pane-agents mapping file — more reliable than pane_current_command
+		// since Claude runs as a child of the shell (tmux reports "zsh" not "claude")
+		isAgent := hasPaneAgentMapping(paneID)
 		panes = append(panes, PaneInfo{
 			PaneID:  paneID,
 			Command: command,
@@ -547,6 +549,14 @@ type SessionPane struct {
 	Type    string
 	Cwd     string
 	Command string
+}
+
+// hasPaneAgentMapping checks if a pane-agents mapping file exists for this pane,
+// indicating it's running a Claude agent.
+func hasPaneAgentMapping(paneID string) bool {
+	home, _ := os.UserHomeDir()
+	_, err := os.Stat(filepath.Join(home, ".bay", "pane-agents", paneID))
+	return err == nil
 }
 
 // ListBaySessions is kept for compatibility.
