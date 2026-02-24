@@ -524,8 +524,13 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 
 		var command string
 		if p.Type == "agent" {
-			// Launch claude via bash so SessionStart hook fires
-			command = "bash -c \"claude\""
+			if p.ClaudeSessionID != "" {
+				// Resume previous Claude conversation
+				command = fmt.Sprintf("bash -c \"claude --resume --session-id %s\"", p.ClaudeSessionID)
+			} else {
+				// Fresh Claude — SessionStart hook provides context injection
+				command = "bash -c \"claude\""
+			}
 		}
 
 		args := []string{"split-window", "-h", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex), "-c", dir}
@@ -546,9 +551,10 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 // SessionPane is a minimal pane description used for recreation.
 // This mirrors session.Pane but avoids the import cycle.
 type SessionPane struct {
-	Type    string
-	Cwd     string
-	Command string
+	Type            string
+	Cwd             string
+	Command         string
+	ClaudeSessionID string
 }
 
 // hasPaneAgentMapping checks if a pane-agents mapping file exists for this pane,
