@@ -133,6 +133,9 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
+	// Add claude_session_id column to episodic (try-and-ignore for existing DBs)
+	db.Exec(`ALTER TABLE episodic ADD COLUMN claude_session_id TEXT`)
+
 	return nil
 }
 

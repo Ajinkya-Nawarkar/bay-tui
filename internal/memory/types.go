@@ -4,12 +4,13 @@ import "time"
 
 // EpisodicEntry represents a single event in the episodic log.
 type EpisodicEntry struct {
-	ID        int64
-	SessionID string
-	Type      string // "cmd", "llm", "pane_snapshot", "activate", "deactivate", "git_commit", "note"
-	Content   string
-	PaneID    string
-	Timestamp time.Time
+	ID              int64
+	SessionID       string
+	Type            string // "cmd", "llm", "pane_snapshot", "activate", "deactivate", "git_commit", "note", "summary"
+	Content         string
+	PaneID          string
+	ClaudeSessionID string
+	Timestamp       time.Time
 }
 
 // WorkingState represents the live session state in working memory.

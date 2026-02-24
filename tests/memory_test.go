@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -21,13 +22,13 @@ func TestEpisodicAppendAndRecent(t *testing.T) {
 	defer d.Close()
 
 	// Append some entries
-	if err := memory.AppendEpisodicDB(d, "test-session", "cmd", "git status", "%1"); err != nil {
+	if err := memory.AppendEpisodicDB(d, "test-session", "cmd", "git status", "%1", ""); err != nil {
 		t.Fatalf("AppendEpisodic failed: %v", err)
 	}
-	if err := memory.AppendEpisodicDB(d, "test-session", "cmd", "go build .", "%1"); err != nil {
+	if err := memory.AppendEpisodicDB(d, "test-session", "cmd", "go build .", "%1", ""); err != nil {
 		t.Fatalf("AppendEpisodic failed: %v", err)
 	}
-	if err := memory.AppendEpisodicDB(d, "other-session", "cmd", "npm test", "%2"); err != nil {
+	if err := memory.AppendEpisodicDB(d, "other-session", "cmd", "npm test", "%2", ""); err != nil {
 		t.Fatalf("AppendEpisodic failed: %v", err)
 	}
 
@@ -61,10 +62,10 @@ func TestEpisodicSearch(t *testing.T) {
 	}
 	defer d.Close()
 
-	memory.AppendEpisodicDB(d, "s1", "cmd", "debugging auth middleware issue", "%1")
-	memory.AppendEpisodicDB(d, "s1", "note", "chose JWT over session cookies", "%1")
-	memory.AppendEpisodicDB(d, "s2", "cmd", "fixed auth bug in login handler", "%2")
-	memory.AppendEpisodicDB(d, "s2", "cmd", "running database migration", "%2")
+	memory.AppendEpisodicDB(d, "s1", "cmd", "debugging auth middleware issue", "%1", "")
+	memory.AppendEpisodicDB(d, "s1", "note", "chose JWT over session cookies", "%1", "")
+	memory.AppendEpisodicDB(d, "s2", "cmd", "fixed auth bug in login handler", "%2", "")
+	memory.AppendEpisodicDB(d, "s2", "cmd", "running database migration", "%2", "")
 
 	// Search across all sessions
 	results, err := memory.SearchEpisodicDB(d, "auth", "")
@@ -101,8 +102,8 @@ func TestEpisodicDelete(t *testing.T) {
 	}
 	defer d.Close()
 
-	memory.AppendEpisodicDB(d, "s1", "cmd", "hello", "")
-	memory.AppendEpisodicDB(d, "s2", "cmd", "world", "")
+	memory.AppendEpisodicDB(d, "s1", "cmd", "hello", "", "")
+	memory.AppendEpisodicDB(d, "s2", "cmd", "world", "", "")
 
 	if err := memory.DeleteSessionEpisodicDB(d, "s1"); err != nil {
 		t.Fatalf("DeleteSessionEpisodic failed: %v", err)
@@ -274,5 +275,182 @@ func TestWorkingRename(t *testing.T) {
 	}
 	if new.CurrentTask != "testing" {
 		t.Errorf("expected task preserved after rename, got '%s'", new.CurrentTask)
+	}
+}
+
+func TestRollingSummaries(t *testing.T) {
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	// Append several summary entries with different claude_session_ids
+	memory.AppendEpisodicDB(d, "s1", "summary", "Set up auth middleware", "", "claude-abc")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Fixed token refresh bug", "", "claude-abc")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Wrote unit tests", "", "claude-def")
+	memory.AppendEpisodicDB(d, "s1", "cmd", "go test ./...", "%1", "")
+
+	// RecentSummariesDB should return only summary entries
+	summaries, err := memory.RecentSummariesDB(d, "s1", 10)
+	if err != nil {
+		t.Fatalf("RecentSummariesDB failed: %v", err)
+	}
+	if len(summaries) != 3 {
+		t.Errorf("expected 3 summaries, got %d", len(summaries))
+	}
+
+	// Most recent first
+	if len(summaries) >= 1 && summaries[0].Content != "Wrote unit tests" {
+		t.Errorf("expected newest first, got '%s'", summaries[0].Content)
+	}
+
+	// Verify claude_session_id is preserved
+	if len(summaries) >= 1 && summaries[0].ClaudeSessionID != "claude-def" {
+		t.Errorf("expected claude_session_id 'claude-def', got '%s'", summaries[0].ClaudeSessionID)
+	}
+}
+
+func TestRecentSummariesLimit(t *testing.T) {
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	for i := 0; i < 15; i++ {
+		memory.AppendEpisodicDB(d, "s1", "summary", "summary entry", "", "claude-abc")
+	}
+
+	summaries, err := memory.RecentSummariesDB(d, "s1", 5)
+	if err != nil {
+		t.Fatalf("RecentSummariesDB failed: %v", err)
+	}
+	if len(summaries) != 5 {
+		t.Errorf("expected 5 summaries with limit, got %d", len(summaries))
+	}
+}
+
+func TestEpisodicWithClaudeSessionID(t *testing.T) {
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	// Append with claude_session_id
+	if err := memory.AppendEpisodicDB(d, "s1", "pane_snapshot", "some buffer", "%5", "claude-xyz"); err != nil {
+		t.Fatalf("AppendEpisodic failed: %v", err)
+	}
+
+	entries, err := memory.RecentEpisodicDB(d, "s1", 10)
+	if err != nil {
+		t.Fatalf("RecentEpisodic failed: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].ClaudeSessionID != "claude-xyz" {
+		t.Errorf("expected claude_session_id 'claude-xyz', got '%s'", entries[0].ClaudeSessionID)
+	}
+}
+
+func TestContextFiltersPaneSnapshotsAndSummaries(t *testing.T) {
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	// Create working state
+	w := &memory.WorkingState{SessionID: "s1", Repo: "myrepo"}
+	memory.UpsertWorkingDB(d, w)
+
+	// Add various episodic entries
+	memory.AppendEpisodicDB(d, "s1", "activate", "session activated", "", "")
+	memory.AppendEpisodicDB(d, "s1", "pane_snapshot", "long buffer content...", "%1", "claude-abc")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Fixed auth bug", "", "claude-abc")
+	memory.AppendEpisodicDB(d, "s1", "cmd", "go test ./...", "%1", "")
+	memory.AppendEpisodicDB(d, "s1", "deactivate", "session deactivated", "", "")
+
+	ctx, err := memory.RenderContextDB(d, "s1")
+	if err != nil {
+		t.Fatalf("RenderContextDB failed: %v", err)
+	}
+
+	// pane_snapshot and summary should NOT appear in Recent Activity
+	if strings.Contains(ctx, "long buffer content") {
+		t.Error("pane_snapshot content should be filtered from Recent Activity")
+	}
+
+	// activate and cmd should appear
+	if !strings.Contains(ctx, "session activated") {
+		t.Error("activate entry should appear in Recent Activity")
+	}
+	if !strings.Contains(ctx, "go test") {
+		t.Error("cmd entry should appear in Recent Activity")
+	}
+}
+
+func TestSessionHistoryRendering(t *testing.T) {
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	// Create working state
+	w := &memory.WorkingState{SessionID: "s1", Repo: "myrepo"}
+	memory.UpsertWorkingDB(d, w)
+
+	// Add multiple summaries
+	memory.AppendEpisodicDB(d, "s1", "summary", "First summary", "", "claude-abc")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Second summary", "", "claude-abc")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Third summary (most recent)", "", "claude-abc")
+
+	ctx, err := memory.RenderContextDB(d, "s1")
+	if err != nil {
+		t.Fatalf("RenderContextDB failed: %v", err)
+	}
+
+	// Session History section should exist (>1 summary)
+	if !strings.Contains(ctx, "## Session History") {
+		t.Error("expected Session History section")
+	}
+
+	// Most recent summary is skipped (same as last_summary)
+	// "First summary" and "Second summary" should appear
+	if !strings.Contains(ctx, "First summary") {
+		t.Error("expected First summary in Session History")
+	}
+	if !strings.Contains(ctx, "Second summary") {
+		t.Error("expected Second summary in Session History")
+	}
+}
+
+func TestSessionHistoryGroupsByAgent(t *testing.T) {
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	w := &memory.WorkingState{SessionID: "s1", Repo: "myrepo"}
+	memory.UpsertWorkingDB(d, w)
+
+	// Add summaries from multiple agents
+	memory.AppendEpisodicDB(d, "s1", "summary", "Agent 1 work", "", "claude-agent1")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Agent 2 work", "", "claude-agent2")
+	memory.AppendEpisodicDB(d, "s1", "summary", "More agent 1 work", "", "claude-agent1")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Latest (skipped)", "", "claude-agent1")
+
+	ctx, err := memory.RenderContextDB(d, "s1")
+	if err != nil {
+		t.Fatalf("RenderContextDB failed: %v", err)
+	}
+
+	// With multiple agents, should have grouping headers
+	if !strings.Contains(ctx, "### Agent (") {
+		t.Error("expected agent grouping headers for multi-agent Session History")
 	}
 }

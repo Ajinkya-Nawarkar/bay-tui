@@ -459,6 +459,96 @@ func CaptureAllDevPanes(windowIndex, lines int) (map[string]string, error) {
 	return result, nil
 }
 
+// PaneInfo holds information about a single tmux pane.
+type PaneInfo struct {
+	PaneID  string
+	Command string
+	Cwd     string
+	IsAgent bool
+}
+
+// SnapshotPaneLayout queries tmux for the current pane layout of a window.
+// Returns all panes except the topbar pane.
+func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
+	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex),
+		"-F", "#{pane_id} #{pane_current_command} #{pane_current_path}")
+	if err != nil {
+		return nil, fmt.Errorf("list-panes: %w", err)
+	}
+
+	topbarID := TopbarPaneTarget()
+	var panes []PaneInfo
+
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.SplitN(line, " ", 3)
+		if len(parts) < 3 {
+			continue
+		}
+
+		paneID := parts[0]
+		command := parts[1]
+		cwd := parts[2]
+
+		// Skip topbar pane
+		if paneID == topbarID {
+			continue
+		}
+
+		isAgent := strings.Contains(command, "claude") || strings.Contains(command, "node")
+		panes = append(panes, PaneInfo{
+			PaneID:  paneID,
+			Command: command,
+			Cwd:     cwd,
+			IsAgent: isAgent,
+		})
+	}
+
+	return panes, nil
+}
+
+// RecreateSessionPanes recreates additional panes in a window from saved layout.
+// The first pane is already created by CreateSessionWindow — this handles the rest.
+func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
+	for _, p := range panes {
+		dir := p.Cwd
+		if dir == "" {
+			continue
+		}
+
+		var command string
+		if p.Type == "agent" {
+			// Launch claude via bash so SessionStart hook fires
+			command = "bash -c \"claude\""
+		}
+
+		args := []string{"split-window", "-h", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex), "-c", dir}
+		if command != "" {
+			args = append(args, command)
+		}
+		if _, err := run(args...); err != nil {
+			continue // Non-fatal: best-effort recreation
+		}
+	}
+
+	// Lock topbar height after adding panes
+	run("resize-pane", "-t", TopbarPaneTarget(), "-y", TopbarHeight)
+
+	return nil
+}
+
+// SessionPane is a minimal pane description used for recreation.
+// This mirrors session.Pane but avoids the import cycle.
+type SessionPane struct {
+	Type    string
+	Cwd     string
+	Command string
+}
+
 // ListBaySessions is kept for compatibility.
 func ListBaySessions() ([]string, error) {
 	return nil, nil

@@ -170,10 +170,3 @@ func RenameWorkingDB(d *sql.DB, oldID, newID string) error {
 	return err
 }
 
-// nullStr returns a sql.NullString for optional string fields.
-func nullStr(s string) sql.NullString {
-	if s == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: s, Valid: true}
-}

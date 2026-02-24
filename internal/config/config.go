@@ -28,12 +28,18 @@ func WorktreesDir() string {
 	return filepath.Join(BayDir(), "worktrees")
 }
 
+// PaneAgentsDir returns the path to ~/.bay/pane-agents/
+func PaneAgentsDir() string {
+	return filepath.Join(BayDir(), "pane-agents")
+}
+
 // EnsureDirs creates the ~/.bay/ directory structure.
 func EnsureDirs() error {
 	dirs := []string{
 		BayDir(),
 		SessionsDir(),
 		WorktreesDir(),
+		PaneAgentsDir(),
 		filepath.Join(BayDir(), "agents"),
 		filepath.Join(BayDir(), "logs"),
 		filepath.Join(BayDir(), "plugins"),

@@ -70,13 +70,30 @@ func RenderContextDB(d *sql.DB, sessionID string) (string, error) {
 		b.WriteString(fmt.Sprintf("> Session: %s | No working state recorded\n", sessionID))
 	}
 
-	// Recent episodic entries
-	entries, err := RecentEpisodicDB(d, sessionID, 10)
+	// Session History — rolling summaries grouped by agent pane
+	renderSessionHistory(&b, d, sessionID)
+
+	// Recent episodic entries (filtered: skip pane_snapshot and summary)
+	entries, err := RecentEpisodicDB(d, sessionID, 20)
 	if err == nil && len(entries) > 0 {
-		b.WriteString("\n## Recent Activity\n")
+		var filtered []EpisodicEntry
 		for _, e := range entries {
-			ts := e.Timestamp.Format("15:04")
-			b.WriteString(fmt.Sprintf("- [%s] (%s) %s\n", ts, e.Type, e.Content))
+			switch e.Type {
+			case "pane_snapshot", "summary":
+				continue
+			default:
+				filtered = append(filtered, e)
+			}
+		}
+		if len(filtered) > 10 {
+			filtered = filtered[:10]
+		}
+		if len(filtered) > 0 {
+			b.WriteString("\n## Recent Activity\n")
+			for _, e := range filtered {
+				ts := e.Timestamp.Format("15:04")
+				b.WriteString(fmt.Sprintf("- [%s] (%s) %s\n", ts, e.Type, e.Content))
+			}
 		}
 	}
 
@@ -116,6 +133,59 @@ func RenderContextDB(d *sql.DB, sessionID string) (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+// renderSessionHistory queries rolling summaries and renders the "Session History" section.
+// Groups by claude_session_id if there are multiple agent panes.
+func renderSessionHistory(b *strings.Builder, d *sql.DB, sessionID string) {
+	summaries, err := RecentSummariesDB(d, sessionID, 30)
+	if err != nil || len(summaries) <= 1 {
+		return
+	}
+
+	// Skip the most recent one (same as last_summary in working_state)
+	summaries = summaries[1:]
+	if len(summaries) == 0 {
+		return
+	}
+
+	// Group by claude_session_id
+	type group struct {
+		claudeSessionID string
+		entries         []EpisodicEntry
+	}
+
+	groupOrder := []string{}
+	groupMap := map[string][]EpisodicEntry{}
+
+	for _, s := range summaries {
+		key := s.ClaudeSessionID
+		if _, exists := groupMap[key]; !exists {
+			groupOrder = append(groupOrder, key)
+		}
+		groupMap[key] = append(groupMap[key], s)
+	}
+
+	b.WriteString("\n## Session History\n")
+
+	multiGroup := len(groupOrder) > 1
+
+	for _, key := range groupOrder {
+		entries := groupMap[key]
+		if multiGroup && key != "" {
+			// Show short ID for grouping
+			shortID := key
+			if len(shortID) > 12 {
+				shortID = shortID[:12]
+			}
+			b.WriteString(fmt.Sprintf("### Agent (%s)\n", shortID))
+		}
+
+		for _, e := range entries {
+			ts := e.Timestamp.Format("02 Jan 15:04")
+			b.WriteString(fmt.Sprintf("- [%s] %s\n", ts, e.Content))
+		}
+	}
 }
 
 // SiblingActivity returns recent summaries from other sessions in the same repo.

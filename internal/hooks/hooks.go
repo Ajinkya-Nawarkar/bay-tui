@@ -1,10 +1,14 @@
 package hooks
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"bay/internal/config"
 	"bay/internal/memory"
+	"bay/internal/session"
 	baytmux "bay/internal/tmux"
 )
 
@@ -78,7 +82,7 @@ func OnSessionActivate(sessionName, repoName, workingDir string) error {
 	return nil
 }
 
-// OnSessionDeactivate captures all dev pane buffers, queues summaries, and logs event.
+// OnSessionDeactivate captures all dev pane buffers, queues summaries, syncs pane layout, and logs event.
 func OnSessionDeactivate(sessionName, repoPath string, windowIdx int) error {
 	cfg := loadConfig()
 	if !cfg.Memory.Enabled {
@@ -88,6 +92,9 @@ func OnSessionDeactivate(sessionName, repoPath string, windowIdx int) error {
 	if cfg.Memory.EpisodicLogging {
 		memory.AppendEpisodic(sessionName, "deactivate", "session deactivated", "")
 	}
+
+	// Sync pane layout to session YAML
+	syncPaneLayout(sessionName, windowIdx)
 
 	if !cfg.Memory.AutoSummarize {
 		return nil
@@ -99,14 +106,64 @@ func OnSessionDeactivate(sessionName, repoPath string, windowIdx int) error {
 		return nil // Non-fatal: panes may already be gone
 	}
 
-	// Queue each buffer for async summarization
-	for _, buffer := range buffers {
+	// Queue each buffer for async summarization with pane→agent mapping
+	for paneID, buffer := range buffers {
 		if len(buffer) > 0 {
-			memory.SummarizeAsync(sessionName, buffer)
+			claudeSessionID := readPaneAgent(paneID)
+			memory.SummarizeAsync(sessionName, buffer, paneID, claudeSessionID)
 		}
 	}
 
 	return nil
+}
+
+// readPaneAgent reads the claude session ID mapped to a tmux pane.
+func readPaneAgent(paneID string) string {
+	dir := config.PaneAgentsDir()
+	filename := filepath.Join(dir, paneID)
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// syncPaneLayout snapshots the current tmux pane layout and persists it to session YAML.
+func syncPaneLayout(sessionName string, windowIdx int) {
+	s, err := session.Load(sessionName)
+	if err != nil {
+		return
+	}
+
+	panes, err := baytmux.SnapshotPaneLayout(windowIdx)
+	if err != nil {
+		return
+	}
+
+	var sessionPanes []session.Pane
+	for _, p := range panes {
+		paneType := "shell"
+		if p.IsAgent {
+			paneType = "agent"
+		}
+
+		sp := session.Pane{
+			Type:    paneType,
+			Cwd:     p.Cwd,
+			Command: p.Command,
+			PaneID:  p.PaneID,
+		}
+
+		// Read claude session ID from mapping file
+		if paneType == "agent" {
+			sp.ClaudeSessionID = readPaneAgent(p.PaneID)
+		}
+
+		sessionPanes = append(sessionPanes, sp)
+	}
+
+	s.Panes = sessionPanes
+	session.Save(s)
 }
 
 // OnSessionDelete removes all DB rows for the session.
