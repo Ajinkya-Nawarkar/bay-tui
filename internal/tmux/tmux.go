@@ -471,7 +471,7 @@ type PaneInfo struct {
 // Returns all panes except the topbar pane.
 func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex),
-		"-F", "#{pane_id} #{pane_current_command} #{pane_current_path}")
+		"-F", "#{pane_id} #{pane_start_command} #{pane_current_path}")
 	if err != nil {
 		return nil, fmt.Errorf("list-panes: %w", err)
 	}
@@ -491,7 +491,7 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 		}
 
 		paneID := parts[0]
-		command := parts[1]
+		startCmd := parts[1]
 		cwd := parts[2]
 
 		// Skip topbar pane
@@ -499,12 +499,11 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 			continue
 		}
 
-		// Check pane-agents mapping file — more reliable than pane_current_command
-		// since Claude runs as a child of the shell (tmux reports "zsh" not "claude")
-		isAgent := hasPaneAgentMapping(paneID)
+		// Detect agent panes by checking if the start command contains "claude"
+		isAgent := strings.Contains(startCmd, "claude")
 		panes = append(panes, PaneInfo{
 			PaneID:  paneID,
-			Command: command,
+			Command: startCmd,
 			Cwd:     cwd,
 			IsAgent: isAgent,
 		})
@@ -524,17 +523,8 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 
 		var command string
 		if p.Type == "agent" {
-			if p.ClaudeSessionID != "" {
-				// Try resume; on failure, set BAY_PRIOR_AGENT so bay context
-				// injects only this agent's summary (not all agents')
-				command = fmt.Sprintf(
-					"bash -c \"claude --resume --session-id %s || (export BAY_PRIOR_AGENT=%s && claude)\"",
-					p.ClaudeSessionID, p.ClaudeSessionID,
-				)
-			} else {
-				// Fresh Claude — SessionStart hook provides context injection
-				command = "bash -c \"claude\""
-			}
+			// Fresh Claude — SessionStart hook provides context injection
+			command = "bash -c \"claude\""
 		}
 
 		args := []string{"split-window", "-h", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex), "-c", dir}
@@ -555,18 +545,9 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 // SessionPane is a minimal pane description used for recreation.
 // This mirrors session.Pane but avoids the import cycle.
 type SessionPane struct {
-	Type            string
-	Cwd             string
-	Command         string
-	ClaudeSessionID string
-}
-
-// hasPaneAgentMapping checks if a pane-agents mapping file exists for this pane,
-// indicating it's running a Claude agent.
-func hasPaneAgentMapping(paneID string) bool {
-	home, _ := os.UserHomeDir()
-	_, err := os.Stat(filepath.Join(home, ".bay", "pane-agents", paneID))
-	return err == nil
+	Type    string
+	Cwd     string
+	Command string
 }
 
 // ListBaySessions is kept for compatibility.

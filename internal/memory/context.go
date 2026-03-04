@@ -14,22 +14,11 @@ import (
 // RenderContext queries working_state + rules + recent episodic for a session,
 // compiles everything into a structured markdown block, and returns it as a string.
 func RenderContext(sessionID string) (string, error) {
-	return RenderContextDBForAgent(nil, sessionID, "")
-}
-
-// RenderContextForAgent renders context filtered to a specific prior agent's summaries.
-// If priorAgentID is empty, renders all summaries (normal mode).
-func RenderContextForAgent(sessionID, priorAgentID string) (string, error) {
-	return RenderContextDBForAgent(nil, sessionID, priorAgentID)
+	return RenderContextDB(nil, sessionID)
 }
 
 // RenderContextDB renders context using the given DB (or default).
 func RenderContextDB(d *sql.DB, sessionID string) (string, error) {
-	return RenderContextDBForAgent(d, sessionID, "")
-}
-
-// RenderContextDBForAgent renders context, optionally filtered to a prior agent's summaries.
-func RenderContextDBForAgent(d *sql.DB, sessionID, priorAgentID string) (string, error) {
 	if d == nil {
 		var err error
 		d, err = db.Open()
@@ -72,14 +61,8 @@ func RenderContextDBForAgent(d *sql.DB, sessionID, priorAgentID string) (string,
 			b.WriteString(fmt.Sprintf("**Current Task**: %s\n", w.CurrentTask))
 		}
 
-		// Last summary — use per-agent summary if filtering to a specific agent
-		if priorAgentID != "" {
-			agentSummary := latestAgentSummary(d, sessionID, priorAgentID)
-			if agentSummary != "" {
-				b.WriteString("\n## Last Summary\n")
-				b.WriteString(agentSummary + "\n")
-			}
-		} else if w.LastSummary != "" {
+		// Last summary
+		if w.LastSummary != "" {
 			b.WriteString("\n## Last Summary\n")
 			b.WriteString(w.LastSummary + "\n")
 		}
@@ -87,8 +70,8 @@ func RenderContextDBForAgent(d *sql.DB, sessionID, priorAgentID string) (string,
 		b.WriteString(fmt.Sprintf("> Session: %s | No working state recorded\n", sessionID))
 	}
 
-	// Session History — rolling summaries (filtered to specific agent on cold boot)
-	renderSessionHistory(&b, d, sessionID, priorAgentID)
+	// Session History — rolling summaries
+	renderSessionHistory(&b, d, sessionID)
 
 	// Recent episodic entries (filtered: skip pane_snapshot and summary)
 	entries, err := RecentEpisodicDB(d, sessionID, 20)
@@ -152,25 +135,8 @@ func RenderContextDBForAgent(d *sql.DB, sessionID, priorAgentID string) (string,
 	return b.String(), nil
 }
 
-// latestAgentSummary returns the most recent summary for a specific claude_session_id.
-func latestAgentSummary(d *sql.DB, sessionID, claudeSessionID string) string {
-	var content string
-	err := d.QueryRow(
-		`SELECT content FROM episodic
-		WHERE session_id = ? AND claude_session_id = ? AND type = 'summary'
-		ORDER BY id DESC LIMIT 1`,
-		sessionID, claudeSessionID,
-	).Scan(&content)
-	if err != nil {
-		return ""
-	}
-	return content
-}
-
 // renderSessionHistory queries rolling summaries and renders the "Session History" section.
-// If priorAgentID is set, only shows that agent's summaries (cold boot per-agent injection).
-// Otherwise groups by claude_session_id for multi-agent views.
-func renderSessionHistory(b *strings.Builder, d *sql.DB, sessionID, priorAgentID string) {
+func renderSessionHistory(b *strings.Builder, d *sql.DB, sessionID string) {
 	summaries, err := RecentSummariesDB(d, sessionID, 30)
 	if err != nil || len(summaries) <= 1 {
 		return
@@ -182,56 +148,10 @@ func renderSessionHistory(b *strings.Builder, d *sql.DB, sessionID, priorAgentID
 		return
 	}
 
-	// If filtering to a specific agent, only show that agent's summaries
-	if priorAgentID != "" {
-		var filtered []EpisodicEntry
-		for _, s := range summaries {
-			if s.ClaudeSessionID == priorAgentID {
-				filtered = append(filtered, s)
-			}
-		}
-		if len(filtered) == 0 {
-			return
-		}
-		b.WriteString("\n## Session History\n")
-		for _, e := range filtered {
-			ts := e.Timestamp.Format("02 Jan 15:04")
-			b.WriteString(fmt.Sprintf("- [%s] %s\n", ts, e.Content))
-		}
-		return
-	}
-
-	// Group by claude_session_id
-	groupOrder := []string{}
-	groupMap := map[string][]EpisodicEntry{}
-
-	for _, s := range summaries {
-		key := s.ClaudeSessionID
-		if _, exists := groupMap[key]; !exists {
-			groupOrder = append(groupOrder, key)
-		}
-		groupMap[key] = append(groupMap[key], s)
-	}
-
 	b.WriteString("\n## Session History\n")
-
-	multiGroup := len(groupOrder) > 1
-
-	for _, key := range groupOrder {
-		entries := groupMap[key]
-		if multiGroup && key != "" {
-			// Show short ID for grouping
-			shortID := key
-			if len(shortID) > 12 {
-				shortID = shortID[:12]
-			}
-			b.WriteString(fmt.Sprintf("### Agent (%s)\n", shortID))
-		}
-
-		for _, e := range entries {
-			ts := e.Timestamp.Format("02 Jan 15:04")
-			b.WriteString(fmt.Sprintf("- [%s] %s\n", ts, e.Content))
-		}
+	for _, e := range summaries {
+		ts := e.Timestamp.Format("02 Jan 15:04")
+		b.WriteString(fmt.Sprintf("- [%s] %s\n", ts, e.Content))
 	}
 }
 

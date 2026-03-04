@@ -234,7 +234,7 @@ func memCapture(paneID string) error {
 	}
 
 	if cfg.Memory.AutoSummarize {
-		return memory.SummarizeAsync(sessionName, buffer, paneID, "")
+		return memory.SummarizeAsync(sessionName, buffer, paneID)
 	}
 
 	return memory.AppendEpisodic(sessionName, "pane_snapshot", buffer, paneID)

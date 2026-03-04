@@ -361,10 +361,9 @@ func (m *Model) switchToSession(s *session.Session) error {
 			var tmuxPanes []baytmux.SessionPane
 			for _, p := range s.Panes[1:] {
 				tmuxPanes = append(tmuxPanes, baytmux.SessionPane{
-					Type:            p.Type,
-					Cwd:             p.Cwd,
-					Command:         p.Command,
-					ClaudeSessionID: p.ClaudeSessionID,
+					Type:    p.Type,
+					Cwd:     p.Cwd,
+					Command: p.Command,
 				})
 			}
 			baytmux.RecreateSessionPanes(windowIdx, tmuxPanes)

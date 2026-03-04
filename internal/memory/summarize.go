@@ -11,12 +11,12 @@ import (
 
 // SummarizeAsync saves raw buffer to DB immediately, then spawns background
 // goroutine for LLM summarization. TUI remains responsive.
-func SummarizeAsync(sessionID, rawBuffer, paneID, claudeSessionID string) error {
-	return SummarizeAsyncDB(nil, sessionID, rawBuffer, paneID, claudeSessionID)
+func SummarizeAsync(sessionID, rawBuffer, paneID string) error {
+	return SummarizeAsyncDB(nil, sessionID, rawBuffer, paneID)
 }
 
 // SummarizeAsyncDB saves buffer and spawns summarization using the given DB.
-func SummarizeAsyncDB(d *sql.DB, sessionID, rawBuffer, paneID, claudeSessionID string) error {
+func SummarizeAsyncDB(d *sql.DB, sessionID, rawBuffer, paneID string) error {
 	if d == nil {
 		var err error
 		d, err = db.Open()
@@ -26,7 +26,7 @@ func SummarizeAsyncDB(d *sql.DB, sessionID, rawBuffer, paneID, claudeSessionID s
 	}
 
 	// Save raw buffer to episodic immediately
-	AppendEpisodicDB(d, sessionID, "pane_snapshot", rawBuffer, paneID, claudeSessionID)
+	AppendEpisodicDB(d, sessionID, "pane_snapshot", rawBuffer, paneID)
 
 	// Save to pending_summaries for async processing
 	_, err := d.Exec(
@@ -39,7 +39,7 @@ func SummarizeAsyncDB(d *sql.DB, sessionID, rawBuffer, paneID, claudeSessionID s
 
 	// Spawn background goroutine for LLM summarization
 	go func() {
-		processSingleSummary(d, sessionID, rawBuffer, claudeSessionID)
+		processSingleSummary(d, sessionID, rawBuffer)
 		// Clean up the pending row after processing
 		d.Exec(`DELETE FROM pending_summaries WHERE session_id = ? AND raw_buffer = ?`, sessionID, rawBuffer)
 	}()
@@ -86,7 +86,7 @@ func ProcessPendingSummariesDB(d *sql.DB) error {
 
 	for _, p := range items {
 		go func(item pending) {
-			processSingleSummary(d, item.sessionID, item.rawBuffer, "")
+			processSingleSummary(d, item.sessionID, item.rawBuffer)
 			d.Exec(`DELETE FROM pending_summaries WHERE id = ?`, item.id)
 		}(p)
 	}
@@ -95,8 +95,8 @@ func ProcessPendingSummariesDB(d *sql.DB) error {
 }
 
 // processSingleSummary runs LLM summarization on a raw buffer and updates working_state.
-// Also appends a rolling "summary" entry to episodic with the claude_session_id.
-func processSingleSummary(d *sql.DB, sessionID, rawBuffer, claudeSessionID string) {
+// Also appends a rolling "summary" entry to episodic.
+func processSingleSummary(d *sql.DB, sessionID, rawBuffer string) {
 	summary, err := summarizeBuffer(rawBuffer)
 	if err != nil {
 		return
@@ -105,25 +105,23 @@ func processSingleSummary(d *sql.DB, sessionID, rawBuffer, claudeSessionID strin
 		return
 	}
 
-	// Update working_state.last_summary (as before)
+	// Update working_state.last_summary
 	SetSummaryDB(d, sessionID, summary)
 
 	// Append rolling summary entry to episodic
-	AppendEpisodicDB(d, sessionID, "summary", summary, "", claudeSessionID)
+	AppendEpisodicDB(d, sessionID, "summary", summary, "")
 
-	// Compact if too many summaries for this (session, claude_session_id) pair
-	if claudeSessionID != "" {
-		compactSummaries(d, sessionID, claudeSessionID)
-	}
+	// Compact if too many summaries for this session
+	compactSummaries(d, sessionID)
 }
 
-// compactSummaries keeps at most 10 summary entries per (session_id, claude_session_id).
+// compactSummaries keeps at most 10 summary entries per session.
 // When exceeded, the oldest 10 are condensed into one via LLM.
-func compactSummaries(d *sql.DB, sessionID, claudeSessionID string) {
+func compactSummaries(d *sql.DB, sessionID string) {
 	var count int
 	err := d.QueryRow(
-		`SELECT COUNT(*) FROM episodic WHERE session_id = ? AND claude_session_id = ? AND type = 'summary'`,
-		sessionID, claudeSessionID,
+		`SELECT COUNT(*) FROM episodic WHERE session_id = ? AND type = 'summary'`,
+		sessionID,
 	).Scan(&count)
 	if err != nil || count <= 10 {
 		return
@@ -132,9 +130,9 @@ func compactSummaries(d *sql.DB, sessionID, claudeSessionID string) {
 	// Fetch the oldest 10 summaries
 	rows, err := d.Query(
 		`SELECT id, content FROM episodic
-		WHERE session_id = ? AND claude_session_id = ? AND type = 'summary'
+		WHERE session_id = ? AND type = 'summary'
 		ORDER BY id ASC LIMIT 10`,
-		sessionID, claudeSessionID,
+		sessionID,
 	)
 	if err != nil {
 		return
@@ -170,7 +168,7 @@ func compactSummaries(d *sql.DB, sessionID, claudeSessionID string) {
 	}
 
 	// Insert the compacted summary
-	AppendEpisodicDB(d, sessionID, "summary", compacted, "", claudeSessionID)
+	AppendEpisodicDB(d, sessionID, "summary", compacted, "")
 }
 
 // summarizeBuffer sends raw text to headless LLM and returns summary.

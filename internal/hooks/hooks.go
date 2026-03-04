@@ -1,9 +1,6 @@
 package hooks
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"bay/internal/config"
@@ -67,7 +64,6 @@ func OnSessionActivate(sessionName, repoName, workingDir string) error {
 	if err == nil && existing != nil {
 		w.CurrentTask = existing.CurrentTask
 		w.LastSummary = existing.LastSummary
-		w.ClaudeSessionID = existing.ClaudeSessionID
 		w.GitBranch = existing.GitBranch
 	}
 
@@ -106,26 +102,14 @@ func OnSessionDeactivate(sessionName, repoPath string, windowIdx int) error {
 		return nil // Non-fatal: panes may already be gone
 	}
 
-	// Queue each buffer for async summarization with pane→agent mapping
+	// Queue each buffer for async summarization
 	for paneID, buffer := range buffers {
 		if len(buffer) > 0 {
-			claudeSessionID := readPaneAgent(paneID)
-			memory.SummarizeAsync(sessionName, buffer, paneID, claudeSessionID)
+			memory.SummarizeAsync(sessionName, buffer, paneID)
 		}
 	}
 
 	return nil
-}
-
-// readPaneAgent reads the claude session ID mapped to a tmux pane.
-func readPaneAgent(paneID string) string {
-	dir := config.PaneAgentsDir()
-	filename := filepath.Join(dir, paneID)
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
 }
 
 // syncPaneLayout snapshots the current tmux pane layout and persists it to session YAML.
@@ -152,11 +136,6 @@ func syncPaneLayout(sessionName string, windowIdx int) {
 			Cwd:     p.Cwd,
 			Command: p.Command,
 			PaneID:  p.PaneID,
-		}
-
-		// Read claude session ID from mapping file
-		if paneType == "agent" {
-			sp.ClaudeSessionID = readPaneAgent(p.PaneID)
 		}
 
 		sessionPanes = append(sessionPanes, sp)

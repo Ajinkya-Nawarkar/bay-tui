@@ -25,14 +25,14 @@ func GetWorkingDB(d *sql.DB, sessionID string) (*WorkingState, error) {
 
 	w := &WorkingState{}
 	var activeSince sql.NullTime
-	var worktreePath, gitBranch, claudeSessionID, currentTask, lastSummary sql.NullString
+	var worktreePath, gitBranch, currentTask, lastSummary sql.NullString
 
 	err := d.QueryRow(
-		`SELECT session_id, repo, worktree_path, git_branch, claude_session_id,
+		`SELECT session_id, repo, worktree_path, git_branch,
 			current_task, last_summary, active_since, last_updated
 		FROM working_state WHERE session_id = ?`, sessionID,
 	).Scan(
-		&w.SessionID, &w.Repo, &worktreePath, &gitBranch, &claudeSessionID,
+		&w.SessionID, &w.Repo, &worktreePath, &gitBranch,
 		&currentTask, &lastSummary, &activeSince, &w.LastUpdated,
 	)
 
@@ -45,7 +45,6 @@ func GetWorkingDB(d *sql.DB, sessionID string) (*WorkingState, error) {
 
 	w.WorktreePath = worktreePath.String
 	w.GitBranch = gitBranch.String
-	w.ClaudeSessionID = claudeSessionID.String
 	w.CurrentTask = currentTask.String
 	w.LastSummary = lastSummary.String
 	if activeSince.Valid {
@@ -72,19 +71,18 @@ func UpsertWorkingDB(d *sql.DB, w *WorkingState) error {
 
 	_, err := d.Exec(
 		`INSERT INTO working_state (session_id, repo, worktree_path, git_branch,
-			claude_session_id, current_task, last_summary, active_since, last_updated)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			current_task, last_summary, active_since, last_updated)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET
 			repo = excluded.repo,
 			worktree_path = excluded.worktree_path,
 			git_branch = excluded.git_branch,
-			claude_session_id = excluded.claude_session_id,
 			current_task = excluded.current_task,
 			last_summary = excluded.last_summary,
 			active_since = excluded.active_since,
 			last_updated = excluded.last_updated`,
 		w.SessionID, w.Repo, nullStr(w.WorktreePath), nullStr(w.GitBranch),
-		nullStr(w.ClaudeSessionID), nullStr(w.CurrentTask), nullStr(w.LastSummary),
+		nullStr(w.CurrentTask), nullStr(w.LastSummary),
 		w.ActiveSince, time.Now(),
 	)
 	return err
