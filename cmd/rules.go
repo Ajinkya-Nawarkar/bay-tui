@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"bay/internal/rules"
+	"bay/internal/session"
 )
 
 // Rules handles the `bay rules` subcommands.
@@ -94,6 +95,7 @@ func rulesAdd(args []string) error {
 	}
 
 	fmt.Printf("Added rule '%s' (%s) → %s\n", name, scope, path)
+	syncAllWorktreeSessions()
 	return nil
 }
 
@@ -102,6 +104,7 @@ func rulesRm(name string) error {
 		return fmt.Errorf("removing rule: %w", err)
 	}
 	fmt.Printf("Removed rule '%s'\n", name)
+	syncAllWorktreeSessions()
 	return nil
 }
 
@@ -119,12 +122,27 @@ func rulesToggle(name string) error {
 				state = "disabled"
 			}
 			fmt.Printf("Rule '%s' is now %s\n", name, state)
+			syncAllWorktreeSessions()
 			return nil
 		}
 	}
 
 	fmt.Printf("Toggled rule '%s'\n", name)
+	syncAllWorktreeSessions()
 	return nil
+}
+
+// syncAllWorktreeSessions re-syncs rules to all active worktree sessions.
+func syncAllWorktreeSessions() {
+	sessions, err := session.List()
+	if err != nil {
+		return
+	}
+	for _, s := range sessions {
+		if s.IsWorktree {
+			rules.SyncRulesToWorktree(s.WorkingDir, s.Repo)
+		}
+	}
 }
 
 func printRulesHelp() {

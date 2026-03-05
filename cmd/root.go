@@ -9,6 +9,7 @@ import (
 
 	"bay/internal/config"
 	"bay/internal/memory"
+	"bay/internal/rules"
 	baytmux "bay/internal/tmux"
 	"bay/internal/tui"
 )
@@ -86,6 +87,9 @@ func runTUI() error {
 			return err
 		}
 	}
+
+	// Ensure built-in rules exist
+	rules.EnsureBuiltinRules(nil)
 
 	// Process any pending LLM summaries from prior crashes/restarts
 	go memory.ProcessPendingSummaries()

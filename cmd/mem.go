@@ -276,19 +276,16 @@ func memConfig(args []string) error {
 		fmt.Printf("  episodic_logging:   %v\n", m.EpisodicLogging)
 		fmt.Printf("  auto_summarize:     %v\n", m.AutoSummarize)
 		fmt.Printf("  context_injection:  %v\n", m.ContextInjection)
-		fmt.Printf("  sibling_context:    %v\n", m.SiblingContext)
-		fmt.Printf("  rules_injection:    %v\n", m.RulesInjection)
-		fmt.Printf("  cross_repo_context: %v\n", m.CrossRepoContext)
+		fmt.Printf("  context_budget:     %d\n", m.ContextBudget)
 		return nil
 	}
 
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "Usage: bay mem config <feature> on|off")
+		fmt.Fprintln(os.Stderr, "Usage: bay mem config <feature> on|off|<value>")
 		return nil
 	}
 
 	feature := args[0]
-	value := args[1] == "on" || args[1] == "true"
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -297,19 +294,19 @@ func memConfig(args []string) error {
 
 	switch feature {
 	case "enabled":
-		cfg.Memory.Enabled = value
+		cfg.Memory.Enabled = parseBool(args[1])
 	case "episodic_logging":
-		cfg.Memory.EpisodicLogging = value
+		cfg.Memory.EpisodicLogging = parseBool(args[1])
 	case "auto_summarize":
-		cfg.Memory.AutoSummarize = value
+		cfg.Memory.AutoSummarize = parseBool(args[1])
 	case "context_injection":
-		cfg.Memory.ContextInjection = value
-	case "sibling_context":
-		cfg.Memory.SiblingContext = value
-	case "rules_injection":
-		cfg.Memory.RulesInjection = value
-	case "cross_repo_context":
-		cfg.Memory.CrossRepoContext = value
+		cfg.Memory.ContextInjection = parseBool(args[1])
+	case "context_budget":
+		v, err := strconv.Atoi(args[1])
+		if err != nil {
+			return fmt.Errorf("context_budget must be an integer: %w", err)
+		}
+		cfg.Memory.ContextBudget = v
 	default:
 		return fmt.Errorf("unknown feature: %s", feature)
 	}
@@ -318,7 +315,7 @@ func memConfig(args []string) error {
 		return fmt.Errorf("saving config: %w", err)
 	}
 
-	fmt.Printf("%s = %v\n", feature, value)
+	fmt.Printf("%s set\n", feature)
 	return nil
 }
 
@@ -336,4 +333,8 @@ Usage:
 Internal (used by tmux hooks):
   bay mem capture <pane-id>      Capture pane buffer + queue summarize
   bay mem record <type> <pane-id> <data>  Append to episodic log`)
+}
+
+func parseBool(s string) bool {
+	return s == "on" || s == "true"
 }

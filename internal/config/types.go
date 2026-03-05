@@ -21,7 +21,5 @@ type MemoryConfig struct {
 	EpisodicLogging  bool `yaml:"episodic_logging"`
 	AutoSummarize    bool `yaml:"auto_summarize"`
 	ContextInjection bool `yaml:"context_injection"`
-	SiblingContext   bool `yaml:"sibling_context"`
-	RulesInjection   bool `yaml:"rules_injection"`
-	CrossRepoContext bool `yaml:"cross_repo_context"`
+	ContextBudget    int  `yaml:"context_budget"`
 }

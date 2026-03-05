@@ -24,10 +24,3 @@ type WorkingState struct {
 	LastUpdated  time.Time
 }
 
-// SiblingContext holds a summary from a sibling session in the same repo.
-type SiblingContext struct {
-	Session     string
-	Branch      string
-	LastSummary string
-	LastUpdated time.Time
-}

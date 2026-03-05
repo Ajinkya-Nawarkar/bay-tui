@@ -96,15 +96,13 @@ func DefaultConfig() *Config {
 	}
 }
 
-// DefaultMemoryConfig returns memory config with all features enabled except CrossRepoContext.
+// DefaultMemoryConfig returns memory config with all features enabled.
 func DefaultMemoryConfig() MemoryConfig {
 	return MemoryConfig{
 		Enabled:          true,
 		EpisodicLogging:  true,
 		AutoSummarize:    true,
 		ContextInjection: true,
-		SiblingContext:   true,
-		RulesInjection:   true,
-		CrossRepoContext: false,
+		ContextBudget:    12000,
 	}
 }

@@ -5,6 +5,7 @@ import (
 
 	"bay/internal/config"
 	"bay/internal/memory"
+	"bay/internal/rules"
 	"bay/internal/session"
 	baytmux "bay/internal/tmux"
 )
@@ -40,6 +41,9 @@ func OnSessionCreate(sessionName, repoName, workingDir string) error {
 	if cfg.Memory.EpisodicLogging {
 		memory.AppendEpisodic(sessionName, "activate", "session created: "+repoName, "")
 	}
+
+	// Sync rules to worktree
+	rules.SyncRulesToWorktree(workingDir, repoName)
 
 	return nil
 }
