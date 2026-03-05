@@ -96,6 +96,12 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "upgrade":
+		if err := cmd.Upgrade(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
 	case "help", "--help", "-h":
 		printHelp()
 
@@ -117,6 +123,7 @@ func printHelp() {
 		"  bay kill <name>  Kill a session\n" +
 		"  bay keybinds     Show keybind reference and terminal setup tips\n" +
 		"  bay build        Rebuild bay from latest source\n" +
+		"  bay upgrade      Download and install latest release\n" +
 		"  bay uninstall    Remove all bay data and Claude hooks\n" +
 		"  bay help         Show this help\n" +
 		"\n" +
