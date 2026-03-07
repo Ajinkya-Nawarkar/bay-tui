@@ -161,8 +161,8 @@ func TestBindKeysQuickAccessUsesDynamicTarget(t *testing.T) {
 		t.Error("`+r binding should target .0")
 	}
 
-	// `+0 through `+9 should use .0
-	for i := 0; i <= 9; i++ {
+	// `+1 through `+9 should use .0
+	for i := 1; i <= 9; i++ {
 		key := strings.TrimSpace(strings.Repeat(" ", 0) + string(rune('0'+i)))
 		c := findBindKey(cmds, key)
 		if c == nil {

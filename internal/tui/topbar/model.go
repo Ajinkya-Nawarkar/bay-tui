@@ -209,13 +209,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.cycleSession()
 		case key == "r":
 			return m.cycleRepo(1)
-		case len(key) == 1 && key[0] >= '0' && key[0] <= '9':
-			// 1-indexed: key 1 = session 0, key 2 = session 1, ..., key 0 = session 9
-			digit := int(key[0] - '0')
-			if digit == 0 {
-				digit = 10
-			}
-			return m.jumpToSession(digit - 1)
+		case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
+			return m.jumpToSession(int(key[0]-'1'))
 		}
 
 		// All other keys require focused mode
@@ -260,6 +255,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.activateCurrentSession()
 		case "n":
+			if len(m.activeRepoSessions()) >= 9 {
+				m.statusMsg = "Max 9 sessions per repo"
+				return m, clearStatusAfter(2 * time.Second)
+			}
 			repo := m.activeRepoName()
 			return m, func() tea.Msg { return SwitchToCreateMsg{PreselectedRepo: repo} }
 		case "m":

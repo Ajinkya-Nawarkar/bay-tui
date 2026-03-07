@@ -393,7 +393,7 @@ func bindKeysImpl(run RunnerFunc) error {
 	run("unbind-key", "n") // next-window
 	run("unbind-key", "p") // previous-window
 	run("unbind-key", "l") // last-window
-	for i := 0; i <= 9; i++ {
+	for i := 1; i <= 9; i++ {
 		// Already rebound on prefix2 (backtick) to send-keys to topbar.
 		// Unbind on primary prefix (Ctrl+B) to prevent bypass.
 		run("unbind-key", "-T", "prefix", fmt.Sprintf("%d", i))
@@ -443,8 +443,8 @@ func bindKeysImpl(run RunnerFunc) error {
 	// `+r → cycle repo (repeatable)
 	run("bind-key", "-r", "r", "send-keys", "-t", ".0", "r")
 
-	// `+0-9 → jump to session by index
-	for i := 0; i <= 9; i++ {
+	// `+1-9 → jump to session by index (1-indexed, max 9 sessions)
+	for i := 1; i <= 9; i++ {
 		key := fmt.Sprintf("%d", i)
 		run("bind-key", key, "send-keys", "-t", ".0", key)
 	}
