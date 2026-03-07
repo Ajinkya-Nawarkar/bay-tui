@@ -84,14 +84,8 @@ func main() {
 			os.Exit(1)
 		}
 
-	case "context":
-		if err := cmd.Context(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-
-	case "rules":
-		if err := cmd.Rules(args[1:]); err != nil {
+	case "context", "rules":
+		if err := cmd.ContextCmd(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -135,8 +129,7 @@ func printHelp() {
 		"  bay mem clear [session]  Clear session memory\n" +
 		"  bay mem config           Show/toggle memory features\n" +
 		"  bay search \"query\"       Full-text search across all sessions\n" +
-		"  bay context              Output session context (Claude hook)\n" +
-		"  bay rules ls|add|rm|toggle  Manage context injection rules\n" +
+		"  bay context ls|add|rm|toggle|sync  Manage context files\n" +
 		"\n" +
 		"Top bar (` prefix):\n" +
 		"  `+Tab   Cycle session    `+0-9   Jump to session\n" +

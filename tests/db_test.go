@@ -14,7 +14,7 @@ func TestDBOpenInMemory(t *testing.T) {
 	defer d.Close()
 
 	// Verify tables exist
-	tables := []string{"episodic", "episodic_fts", "working_state", "rules", "pending_summaries"}
+	tables := []string{"episodic", "episodic_fts", "working_state", "context_files", "pending_summaries"}
 	for _, table := range tables {
 		var name string
 		err := d.QueryRow(

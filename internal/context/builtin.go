@@ -1,4 +1,4 @@
-package rules
+package context
 
 import (
 	"database/sql"
@@ -23,9 +23,9 @@ and provides persistent memory.
 - ` + "`bay mem note \"text\"`" + ` — log a note to session history
 - ` + "`bay mem show`" + ` — view current session state (task, summary, repo, branch)
 - ` + "`bay search \"query\"`" + ` — full-text search across session history
-- ` + "`bay rules add <name> <path>`" + ` — register a context rule file
-- ` + "`bay rules rm <name>`" + ` — remove a rule
-- ` + "`bay rules ls`" + ` — list all rules
+- ` + "`bay context add <name> <path>`" + ` — register a context file
+- ` + "`bay context rm <name>`" + ` — remove a context file
+- ` + "`bay context ls`" + ` — list all context files
 
 ## How Memory Works
 
@@ -34,13 +34,13 @@ and injected when new agents start. Use ` + "`bay mem task`" + ` to set what you
 so future agents know the goal.
 `
 
-// RulesDir returns the path to ~/.bay/rules/
-func RulesDir() string {
+// ContextFilesDir returns the path to ~/.bay/rules/
+func ContextFilesDir() string {
 	return filepath.Join(config.BayDir(), "rules")
 }
 
 // EnsureBuiltinRules checks if the bay-cli rule exists in the DB. If not, writes
-// the rule file and registers it as a global rule.
+// the rule file and registers it as a global context file.
 func EnsureBuiltinRules(d *sql.DB) error {
 	if d == nil {
 		var err error
@@ -51,18 +51,13 @@ func EnsureBuiltinRules(d *sql.DB) error {
 	}
 
 	// Check if bay-cli rule already exists
-	existing, err := ListDB(d)
-	if err != nil {
-		return fmt.Errorf("listing rules: %w", err)
-	}
-	for _, r := range existing {
-		if r.Name == bayCLIRuleName {
-			return nil // already registered
-		}
+	var exists bool
+	if err := d.QueryRow(`SELECT 1 FROM context_files WHERE name = ? LIMIT 1`, bayCLIRuleName).Scan(&exists); err == nil && exists {
+		return nil
 	}
 
 	// Ensure rules dir exists
-	rulesDir := RulesDir()
+	rulesDir := ContextFilesDir()
 	if err := os.MkdirAll(rulesDir, 0755); err != nil {
 		return fmt.Errorf("creating rules dir: %w", err)
 	}
@@ -74,7 +69,7 @@ func EnsureBuiltinRules(d *sql.DB) error {
 	}
 
 	// Register in DB
-	if err := AddDB(d, bayCLIRuleName, rulePath, "global"); err != nil {
+	if err := AddDB(d, bayCLIRuleName, rulePath, "global", "rules"); err != nil {
 		return fmt.Errorf("registering bay-cli rule: %w", err)
 	}
 

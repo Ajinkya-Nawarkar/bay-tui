@@ -85,12 +85,13 @@ func migrate(db *sql.DB) error {
 			last_updated      DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 
-		// Procedural Memory: context injection rules
-		`CREATE TABLE IF NOT EXISTS rules (
-			name    TEXT PRIMARY KEY,
-			path    TEXT NOT NULL,
-			scope   TEXT DEFAULT 'global',
-			enabled BOOLEAN DEFAULT 1
+		// Procedural Memory: context files (rules, docs, standards, etc.)
+		`CREATE TABLE IF NOT EXISTS context_files (
+			name     TEXT PRIMARY KEY,
+			path     TEXT NOT NULL,
+			scope    TEXT DEFAULT 'global',
+			enabled  BOOLEAN DEFAULT 1,
+			category TEXT DEFAULT 'rules'
 		)`,
 
 		// Pending summaries: raw buffers awaiting async LLM summarization
@@ -135,6 +136,10 @@ func migrate(db *sql.DB) error {
 
 	// Add claude_session_id column to episodic (try-and-ignore for existing DBs)
 	db.Exec(`ALTER TABLE episodic ADD COLUMN claude_session_id TEXT`)
+
+	// Migrate rules → context_files (try-and-ignore for new installs where rules doesn't exist)
+	db.Exec(`ALTER TABLE rules RENAME TO context_files`)
+	db.Exec(`ALTER TABLE context_files ADD COLUMN category TEXT DEFAULT 'rules'`)
 
 	return nil
 }
