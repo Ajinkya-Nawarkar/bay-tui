@@ -128,18 +128,18 @@ func TestBindKeysAgentSplit(t *testing.T) {
 func TestBindKeysQuickAccessUsesDynamicTarget(t *testing.T) {
 	cmds, _ := captureBindKeys()
 
-	// `+q should use .0 not a hardcoded pane target
-	c := findBindKey(cmds, "q")
+	// `+Space should use .0 not a hardcoded pane target
+	c := findBindKey(cmds, "Space")
 	if c == nil {
-		t.Fatal("no bind-key for 'q' found")
+		t.Fatal("no bind-key for 'Space' found")
 	}
 	if !argsContain(c.args, ".0") {
-		t.Error("`+q binding should target .0 (dynamic pane 0)")
+		t.Error("`+Space binding should target .0 (dynamic pane 0)")
 	}
 	// Should NOT contain a hardcoded bay:0.0 target
 	for _, a := range c.args {
 		if strings.Contains(a, "bay:0.0") {
-			t.Error("`+q binding should not use hardcoded bay:0.0")
+			t.Error("`+Space binding should not use hardcoded bay:0.0")
 		}
 	}
 

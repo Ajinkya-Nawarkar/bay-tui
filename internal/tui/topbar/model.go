@@ -160,7 +160,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Clear any lingering status on new keypress
 		m.statusMsg = ""
 
-		// q toggles focus — only reachable via `+q prefix binding
+		// q toggles focus — only reachable via `+Space prefix binding
 		if key == "q" {
 			m.focused = !m.focused
 			m.statusMsg = ""
@@ -184,10 +184,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// These work without focus mode (sent via `+Tab / `+0-9 prefix bindings)
+		// These work without focus mode (sent via `+Tab / `+r / `+0-9 prefix bindings)
 		switch {
 		case key == "tab":
 			return m.cycleSession()
+		case key == "r":
+			return m.cycleRepo(1)
 		case len(key) == 1 && key[0] >= '0' && key[0] <= '9':
 			return m.jumpToSession(int(key[0] - '0'))
 		}

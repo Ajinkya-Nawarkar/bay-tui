@@ -42,7 +42,10 @@ func (m Model) View() string {
 		row2 = "      " + styles.NoSessions.Render(m.statusMsg)
 	}
 
-	content := row1 + "\n" + row2
+	// Row 3: context-aware shortcut hints
+	row3 := m.renderHintBar()
+
+	content := row1 + "\n" + row2 + "\n" + row3
 
 	// Choose border color based on focus state
 	var box lipgloss.Style
@@ -109,6 +112,38 @@ func (m Model) renderSessionRow() string {
 	}
 
 	return pad + strings.Join(tabs, " ")
+}
+
+func (m Model) renderHintBar() string {
+	sep := styles.HelpBar.Render(" │ ")
+
+	if m.mode == modeConfirmDelete {
+		return hint("y", "confirm") + sep + hint("n", "cancel")
+	}
+	if m.mode == modeRename {
+		return hint("enter", "save") + sep + hint("esc", "cancel")
+	}
+
+	if m.focused {
+		hints := hint("←→", "navigate") + sep +
+			hint("enter", "activate") + sep +
+			hint("n", "new") + sep +
+			hint("d", "delete") + sep +
+			hint("R", "rename") + sep +
+			hint("m", "memory") + sep +
+			hint("esc", "exit")
+		return hints
+	}
+
+	// Unfocused — show prefix shortcuts
+	return hint("`+space", "focus") + sep +
+		hint("`+tab", "cycle") + sep +
+		hint("`+r", "repo") + sep +
+		hint("`+0-9", "jump")
+}
+
+func hint(key, desc string) string {
+	return styles.HelpKey.Render(key) + " " + styles.HelpBar.Render(desc)
 }
 
 func truncate(s string, maxLen int) string {

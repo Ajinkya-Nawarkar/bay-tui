@@ -14,7 +14,7 @@ const (
 	MainSession = "bay"
 
 	// TopbarHeight is the fixed height of the topbar in lines.
-	TopbarHeight = "4"
+	TopbarHeight = "5"
 
 	// Prefix kept for legacy/test compatibility.
 	Prefix = "bay-"
@@ -400,8 +400,8 @@ func bindKeysImpl(run RunnerFunc) error {
 
 	// Quick-access keybinds: send keys to topbar pane (pane 0 of current window)
 	// Use .0 to dynamically target pane index 0 in the active window.
-	// `+q → focus topbar and toggle focused mode
-	run("bind-key", "q", "run-shell",
+	// `+Space → focus topbar and toggle focused mode
+	run("bind-key", "Space", "run-shell",
 		"tmux send-keys -t .0 q; tmux select-pane -t .0")
 
 	// `+Tab → cycle session (repeatable: `+Tab+Tab+Tab...)

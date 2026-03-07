@@ -133,9 +133,9 @@ func printHelp() {
 		"\n" +
 		"Top bar (` prefix):\n" +
 		"  `+Tab   Cycle session    `+0-9   Jump to session\n" +
-		"  `+r     Cycle repo       `+q     Toggle focus mode\n" +
+		"  `+r     Cycle repo       `+space  Toggle focus mode\n" +
 		"\n" +
-		"Focused mode (`+q to enter, esc to leave):\n" +
+		"Focused mode (`+space to enter, esc to leave):\n" +
 		"  h/l     Switch repo      n/d/R   New/delete/rename session\n" +
 		"  m       Memory viewer    Enter   Activate session\n" +
 		"\n" +

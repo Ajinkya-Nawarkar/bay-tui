@@ -33,7 +33,7 @@ var keys = keyMap{
 	),
 	FocusToggle: key.NewBinding(
 		key.WithKeys("q"),
-		key.WithHelp("q", "focus bar"),
+		key.WithHelp("`+space", "focus bar"),
 	),
 	Left: key.NewBinding(
 		key.WithKeys("left", "h"),
