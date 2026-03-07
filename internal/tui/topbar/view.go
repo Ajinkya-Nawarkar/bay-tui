@@ -93,13 +93,15 @@ func (m Model) renderSessionRow() string {
 		isActive := s.Name == m.activeSession
 		isSelected := m.focused && m.focusRow == 1 && i == m.selectedSessionIdx
 
+		// Display 1-indexed: session 0 shows as 1, ..., session 9 shows as 0
+		displayIdx := (i + 1) % 10
 		var label string
 		if isSelected {
-			label = fmt.Sprintf("\u25b6%d:%s\u25c0", i, s.Name) // ▶0:name◀
+			label = fmt.Sprintf("\u25b6%d:%s\u25c0", displayIdx, s.Name) // ▶1:name◀
 		} else if isActive {
-			label = fmt.Sprintf("[%d:%s*]", i, s.Name)
+			label = fmt.Sprintf("[%d:%s*]", displayIdx, s.Name)
 		} else {
-			label = fmt.Sprintf("[%d:%s]", i, s.Name)
+			label = fmt.Sprintf("[%d:%s]", displayIdx, s.Name)
 		}
 
 		switch {
@@ -136,11 +138,16 @@ func (m Model) renderHintBarPlain() string {
 			tmuxHint("esc", "exit")
 	}
 
-	// Unfocused — show prefix shortcuts
+	// Unfocused — show prefix shortcuts (navigation → sessions → panes)
 	return tmuxHint("`+space", "focus") + gap +
 		tmuxHint("`+tab", "cycle") + gap +
+		tmuxHint("`+1-0", "jump") + gap +
 		tmuxHint("`+r", "repo") + gap +
-		tmuxHint("`+0-9", "jump")
+		tmuxHint("`+a", "agent") + gap +
+		tmuxHint("`+d/D", "split") + gap +
+		tmuxHint("`+w", "close") + gap +
+		tmuxHint("`+s", "toggle") + gap +
+		tmuxHint("`+arrows", "nav")
 }
 
 // tmuxHint formats a key+description pair with tmux color codes.

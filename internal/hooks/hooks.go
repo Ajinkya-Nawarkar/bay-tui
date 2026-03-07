@@ -94,7 +94,7 @@ func OnSessionDeactivate(sessionName, repoPath string, windowIdx int) error {
 	}
 
 	// Sync pane layout to session YAML
-	syncPaneLayout(sessionName, windowIdx)
+	SyncPaneLayout(sessionName, windowIdx)
 
 	if !cfg.Memory.AutoSummarize {
 		return nil
@@ -116,8 +116,8 @@ func OnSessionDeactivate(sessionName, repoPath string, windowIdx int) error {
 	return nil
 }
 
-// syncPaneLayout snapshots the current tmux pane layout and persists it to session YAML.
-func syncPaneLayout(sessionName string, windowIdx int) {
+// SyncPaneLayout snapshots the current tmux pane layout and persists it to session YAML.
+func SyncPaneLayout(sessionName string, windowIdx int) {
 	s, err := session.Load(sessionName)
 	if err != nil {
 		return
@@ -140,6 +140,7 @@ func syncPaneLayout(sessionName string, windowIdx int) {
 			Cwd:     p.Cwd,
 			Command: p.Command,
 			PaneID:  p.PaneID,
+			Title:   p.Title,
 		}
 
 		sessionPanes = append(sessionPanes, sp)
@@ -147,6 +148,29 @@ func syncPaneLayout(sessionName string, windowIdx int) {
 
 	s.Panes = sessionPanes
 	session.Save(s)
+}
+
+// CleanOrphanWindows kills tmux windows that don't belong to any saved session.
+// Window 0 is always preserved as the topbar's fallback.
+func CleanOrphanWindows() {
+	sessions, err := session.List()
+	if err != nil {
+		return
+	}
+
+	owned := make(map[int]bool)
+	for _, s := range sessions {
+		if s.TmuxWindow != 0 {
+			owned[s.TmuxWindow] = true
+		}
+	}
+
+	for _, idx := range baytmux.ListWindowIndices() {
+		if idx == 0 || owned[idx] {
+			continue
+		}
+		baytmux.KillWindow(idx)
+	}
 }
 
 // OnSessionDelete removes all DB rows for the session.

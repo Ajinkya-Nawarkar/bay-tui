@@ -70,8 +70,27 @@ func SessionExists(name string) bool {
 
 // wrapTopbarCmd wraps the topbar command so it auto-restarts on unexpected exit.
 // A normal exit (status 0, from bay quitting) breaks the loop.
+// Exits after 5 consecutive rapid failures to avoid spinning forever
+// (e.g., if the binary is missing or consistently crashing).
 func wrapTopbarCmd(cmd string) string {
-	return fmt.Sprintf("bash -c 'while true; do %s; [ $? -eq 0 ] && break; sleep 0.2; done'", cmd)
+	return fmt.Sprintf("bash -c '"+
+		"fails=0; "+
+		"while true; do "+
+		"start=$SECONDS; "+
+		"%s; "+
+		"[ $? -eq 0 ] && break; "+
+		"elapsed=$((SECONDS - start)); "+
+		"if [ $elapsed -lt 2 ]; then "+
+		"fails=$((fails + 1)); "+
+		"else "+
+		"fails=0; "+
+		"fi; "+
+		"if [ $fails -ge 5 ]; then "+
+		"echo \"bay topbar crashed 5 times in a row, giving up\"; "+
+		"break; "+
+		"fi; "+
+		"sleep 0.5; "+
+		"done'", cmd)
 }
 
 // CreateMainSession creates the bay session with just the topbar pane.
@@ -329,7 +348,7 @@ func bindKeysImpl(run RunnerFunc) error {
 
 	// Pane border status
 	run("set-option", "-g", "pane-border-status", "top")
-	run("set-option", "-g", "pane-border-format", " #{?#{==:#{pane_index},0},bay,#(basename #{pane_current_path})} ")
+	run("set-option", "-g", "pane-border-format", " #{?#{==:#{pane_index},0},bay,#{?#{pane_title},#{pane_title},#(basename #{pane_current_path})}} ")
 	run("set-option", "-g", "pane-active-border-style", "fg=#F9FAFB,bold")
 	run("set-option", "-g", "pane-border-style", "fg=#4B5563")
 
@@ -352,10 +371,19 @@ func bindKeysImpl(run RunnerFunc) error {
 	resizeTopbar := fmt.Sprintf("tmux resize-pane -t $(cat %s) -y %s 2>/dev/null || true", topbarIDFile, TopbarHeight)
 
 	// Hooks: re-lock topbar height on layout-changing events.
-	for _, hook := range []string{"after-kill-pane", "after-split-window", "after-select-window", "client-session-changed"} {
+	// after-split-window and after-kill-pane also sync pane layout to session YAML
+	// so that pane state is persisted immediately, not just on session deactivation.
+	syncPanes := "bay sync-panes &"
+	clearTitle := "tmux select-pane -T ''"
+	for _, hook := range []string{"after-select-window", "client-session-changed"} {
 		run("set-hook", "-g", hook,
 			fmt.Sprintf("run-shell '%s'", resizeTopbar))
 	}
+	run("set-hook", "-g", "after-kill-pane",
+		fmt.Sprintf("run-shell '%s; %s'", resizeTopbar, syncPanes))
+	// Clear title on new panes so they fall back to directory basename in the border.
+	run("set-hook", "-g", "after-split-window",
+		fmt.Sprintf("run-shell '%s; %s; %s'", clearTitle, resizeTopbar, syncPanes))
 
 	// Backtick as a second prefix
 	run("set-option", "-g", "prefix2", "`")
@@ -388,8 +416,9 @@ func bindKeysImpl(run RunnerFunc) error {
 
 	// a for agent split — vertical split running claude in same dir
 	// Uses bash -c so Claude Code's SessionStart hook (bay context) fires correctly.
+	// Auto-labels the pane "claude" so the border shows it.
 	run("bind-key", "-r", "a", "run-shell",
-		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' 'bash -c \"claude\"' && %s", resizeTopbar))
+		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' 'bash -c \"claude\"' && tmux select-pane -T claude && %s", resizeTopbar))
 
 	// w to close pane — guard by comparing pane_id against topbar's persisted ID.
 	run("bind-key", "-r", "w", "if-shell",
@@ -420,11 +449,36 @@ func bindKeysImpl(run RunnerFunc) error {
 		run("bind-key", key, "send-keys", "-t", ".0", key)
 	}
 
+	// , to rename pane — prompts for a label, sets it as the pane title.
+	// Empty input clears the title (reverts to directory basename).
+	run("bind-key", ",", "command-prompt", "-p", "pane name:", "select-pane -T '%%'")
+
 	// Memory hooks: capture pane buffer on pane exit for episodic recording
 	run("set-hook", "-g", "pane-exited",
 		"run-shell 'bay mem capture #{pane_id} &'")
 
 	return nil
+}
+
+// ListWindowIndices returns all window indices in the bay session.
+func ListWindowIndices() []int {
+	out, err := run("list-windows", "-t", MainSession, "-F", "#{window_index}")
+	if err != nil {
+		return nil
+	}
+	var indices []int
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		idx, err := strconv.Atoi(line)
+		if err != nil {
+			continue
+		}
+		indices = append(indices, idx)
+	}
+	return indices
 }
 
 // CapturePaneBuffer captures the last N lines of a pane's scrollback.
@@ -469,13 +523,14 @@ type PaneInfo struct {
 	Command string
 	Cwd     string
 	IsAgent bool
+	Title   string
 }
 
 // SnapshotPaneLayout queries tmux for the current pane layout of a window.
 // Returns all panes except the topbar pane.
 func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex),
-		"-F", "#{pane_id} #{pane_start_command} #{pane_current_path}")
+		"-F", "#{pane_id} #{pane_title} #{pane_start_command} #{pane_current_path}")
 	if err != nil {
 		return nil, fmt.Errorf("list-panes: %w", err)
 	}
@@ -489,14 +544,15 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 			continue
 		}
 
-		parts := strings.SplitN(line, " ", 3)
-		if len(parts) < 3 {
+		parts := strings.SplitN(line, " ", 4)
+		if len(parts) < 4 {
 			continue
 		}
 
 		paneID := parts[0]
-		startCmd := parts[1]
-		cwd := parts[2]
+		title := parts[1]
+		startCmd := parts[2]
+		cwd := parts[3]
 
 		// Skip topbar pane
 		if paneID == topbarID {
@@ -510,6 +566,7 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 			Command: startCmd,
 			Cwd:     cwd,
 			IsAgent: isAgent,
+			Title:   title,
 		})
 	}
 
@@ -538,6 +595,13 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 		if _, err := run(args...); err != nil {
 			continue // Non-fatal: best-effort recreation
 		}
+
+		// Restore pane title if one was saved
+		if p.Title != "" {
+			run("select-pane", "-T", p.Title)
+		} else {
+			run("select-pane", "-T", "")
+		}
 	}
 
 	// Lock topbar height after adding panes
@@ -552,6 +616,7 @@ type SessionPane struct {
 	Type    string
 	Cwd     string
 	Command string
+	Title   string
 }
 
 // hintsFile returns the path where topbar hints are written for tmux status bar.
@@ -561,10 +626,13 @@ func hintsFile() string {
 }
 
 // WriteTopbarHints writes plain-text hints to disk for tmux status-right to display.
+// Forces an immediate status bar refresh so the change is visible without waiting
+// for the next status-interval tick.
 func WriteTopbarHints(hints string) {
 	f := hintsFile()
 	os.MkdirAll(filepath.Dir(f), 0o755)
 	os.WriteFile(f, []byte(hints), 0o644)
+	run("refresh-client", "-S")
 }
 
 // ListBaySessions is kept for compatibility.

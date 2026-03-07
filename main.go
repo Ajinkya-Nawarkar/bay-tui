@@ -90,6 +90,12 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "sync-panes":
+		if err := cmd.SyncPanes(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
 	case "upgrade":
 		if err := cmd.Upgrade(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -132,7 +138,7 @@ func printHelp() {
 		"  bay context ls|add|rm|toggle|sync  Manage context files\n" +
 		"\n" +
 		"Top bar (` prefix):\n" +
-		"  `+Tab   Cycle session    `+0-9   Jump to session\n" +
+		"  `+Tab   Cycle session    `+1-0   Jump to session\n" +
 		"  `+r     Cycle repo       `+space  Toggle focus mode\n" +
 		"\n" +
 		"Focused mode (`+space to enter, esc to leave):\n" +

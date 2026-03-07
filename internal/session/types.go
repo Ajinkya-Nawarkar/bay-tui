@@ -4,10 +4,11 @@ import "time"
 
 // Pane represents a single pane within a session.
 type Pane struct {
-	Type    string `yaml:"type"`             // "shell" or "agent"
-	Cwd     string `yaml:"cwd"`              // working directory
-	Command string `yaml:"command,omitempty"` // command running (e.g., "claude")
-	PaneID  string `yaml:"pane_id,omitempty"` // tmux pane ID (transient, for mapping)
+	Type    string `yaml:"type"`              // "shell" or "agent"
+	Cwd     string `yaml:"cwd"`               // working directory
+	Command string `yaml:"command,omitempty"`  // command running (e.g., "claude")
+	PaneID  string `yaml:"pane_id,omitempty"`  // tmux pane ID (transient, for mapping)
+	Title   string `yaml:"title,omitempty"`    // user-set pane label
 }
 
 // Session represents a bay dev session.

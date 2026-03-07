@@ -210,7 +210,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key == "r":
 			return m.cycleRepo(1)
 		case len(key) == 1 && key[0] >= '0' && key[0] <= '9':
-			return m.jumpToSession(int(key[0] - '0'))
+			// 1-indexed: key 1 = session 0, key 2 = session 1, ..., key 0 = session 9
+			digit := int(key[0] - '0')
+			if digit == 0 {
+				digit = 10
+			}
+			return m.jumpToSession(digit - 1)
 		}
 
 		// All other keys require focused mode
@@ -394,6 +399,7 @@ func (m *Model) switchToSession(s *session.Session) error {
 					Type:    p.Type,
 					Cwd:     p.Cwd,
 					Command: p.Command,
+					Title:   p.Title,
 				})
 			}
 			baytmux.RecreateSessionPanes(windowIdx, tmuxPanes)
@@ -417,6 +423,9 @@ func (m *Model) switchToSession(s *session.Session) error {
 
 	// Activate new session (update working state, log event)
 	hooks.OnSessionActivate(s.Name, s.Repo, s.WorkingDir)
+
+	// Clean up orphan tmux windows that don't belong to any session
+	hooks.CleanOrphanWindows()
 
 	return nil
 }
