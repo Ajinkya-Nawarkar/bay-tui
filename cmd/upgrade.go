@@ -81,6 +81,10 @@ func Upgrade() error {
 	}
 	defer dlResp.Body.Close()
 
+	if dlResp.StatusCode != 200 {
+		return fmt.Errorf("download failed: HTTP %d", dlResp.StatusCode)
+	}
+
 	out, err := os.Create(tarPath)
 	if err != nil {
 		return fmt.Errorf("creating temp file: %w", err)
@@ -98,9 +102,6 @@ func Upgrade() error {
 	}
 
 	newBin := filepath.Join(tmpDir, "bay")
-	if _, err := os.Stat(newBin); err != nil {
-		return fmt.Errorf("extracted binary not found: %w", err)
-	}
 
 	// Replace current binary
 	if err := os.Rename(newBin, currentBin); err != nil {

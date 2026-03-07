@@ -129,7 +129,9 @@ func memTask(task string) error {
 	}
 	if w == nil {
 		w = &memory.WorkingState{SessionID: s.Name, Repo: s.Repo, WorktreePath: s.WorkingDir}
-		memory.UpsertWorking(w)
+		if err := memory.UpsertWorking(w); err != nil {
+			return fmt.Errorf("creating working state: %w", err)
+		}
 	}
 
 	if err := memory.SetTask(s.Name, task); err != nil {

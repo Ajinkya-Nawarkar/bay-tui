@@ -124,33 +124,12 @@ func renderSessionHistory(d *sql.DB, sessionID string, budget int) string {
 		return ""
 	}
 
-	sectionHeader := "\n## Session History\n"
-	remaining := budget - len(sectionHeader)
-	if remaining <= 0 {
-		return ""
-	}
-
 	var lines []string
 	for _, e := range summaries {
 		ts := e.Timestamp.Format("02 Jan 15:04")
-		line := fmt.Sprintf("- [%s] %s\n", ts, e.Content)
-		if remaining-len(line) < 0 {
-			break
-		}
-		lines = append(lines, line)
-		remaining -= len(line)
+		lines = append(lines, fmt.Sprintf("- [%s] %s\n", ts, e.Content))
 	}
-
-	if len(lines) == 0 {
-		return ""
-	}
-
-	var b strings.Builder
-	b.WriteString(sectionHeader)
-	for _, l := range lines {
-		b.WriteString(l)
-	}
-	return b.String()
+	return renderBudgetedSection("\n## Session History\n", lines, budget)
 }
 
 // renderRecentActivity builds the recent activity section, respecting budget.
@@ -160,47 +139,47 @@ func renderRecentActivity(d *sql.DB, sessionID string, budget int) string {
 		return ""
 	}
 
-	var filtered []EpisodicEntry
+	var lines []string
 	for _, e := range entries {
 		switch e.Type {
 		case "pane_snapshot", "summary":
 			continue
 		default:
-			filtered = append(filtered, e)
+			ts := e.Timestamp.Format("15:04")
+			lines = append(lines, fmt.Sprintf("- [%s] (%s) %s\n", ts, e.Type, e.Content))
 		}
 	}
-	if len(filtered) > 10 {
-		filtered = filtered[:10]
+	if len(lines) > 10 {
+		lines = lines[:10]
 	}
-	if len(filtered) == 0 {
-		return ""
-	}
+	return renderBudgetedSection("\n## Recent Activity\n", lines, budget)
+}
 
-	sectionHeader := "\n## Recent Activity\n"
-	remaining := budget - len(sectionHeader)
-	if remaining <= 0 {
-		return ""
-	}
-
-	var lines []string
-	for _, e := range filtered {
-		ts := e.Timestamp.Format("15:04")
-		line := fmt.Sprintf("- [%s] (%s) %s\n", ts, e.Type, e.Content)
-		if remaining-len(line) < 0 {
-			break
-		}
-		lines = append(lines, line)
-		remaining -= len(line)
-	}
-
+// renderBudgetedSection writes a section header followed by as many lines as fit within budget.
+func renderBudgetedSection(header string, lines []string, budget int) string {
 	if len(lines) == 0 {
 		return ""
 	}
 
+	remaining := budget - len(header)
+	if remaining <= 0 {
+		return ""
+	}
+
 	var b strings.Builder
-	b.WriteString(sectionHeader)
-	for _, l := range lines {
-		b.WriteString(l)
+	b.WriteString(header)
+	wrote := false
+	for _, line := range lines {
+		if remaining-len(line) < 0 {
+			break
+		}
+		b.WriteString(line)
+		remaining -= len(line)
+		wrote = true
+	}
+
+	if !wrote {
+		return ""
 	}
 	return b.String()
 }
