@@ -138,6 +138,7 @@ func printHelp() {
 		"Focused mode (`+space to enter, esc to leave):\n" +
 		"  h/l     Switch repo      n/d/R   New/delete/rename session\n" +
 		"  m       Memory viewer    Enter   Activate session\n" +
+		"  q       Quit bay         esc     Leave focus mode\n" +
 		"\n" +
 		"Pane management (` then):\n" +
 		"  Arrow           Navigate panes\n" +

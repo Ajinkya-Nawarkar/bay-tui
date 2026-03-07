@@ -132,6 +132,20 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case autoActivateMsg:
+		// Restore last active session if available
+		if lastActive := session.LoadActiveSession(); lastActive != "" {
+			if s, err := session.Load(lastActive); err == nil {
+				// Switch to the correct repo tab
+				for i, r := range m.repos {
+					if r.Name == s.Repo {
+						m.activeRepoIdx = i
+						break
+					}
+				}
+				return m.activateSession(s)
+			}
+		}
+		// Fallback: activate first session in current repo
 		if sessions := m.activeRepoSessions(); len(sessions) > 0 {
 			return m.activateSession(sessions[0])
 		}
@@ -160,8 +174,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Clear any lingering status on new keypress
 		m.statusMsg = ""
 
-		// q toggles focus — only reachable via `+Space prefix binding
-		if key == "q" {
+		// Space toggles focus — sent by `+Space prefix binding
+		if key == " " {
 			m.focused = !m.focused
 			m.statusMsg = ""
 			if !m.focused {
@@ -201,7 +215,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Focused-only keybinds
 		switch key {
-		case "Q":
+		case "q":
 			baytmux.KillMainSession()
 			return m, tea.Quit
 		case "esc":
@@ -338,6 +352,7 @@ func (m Model) activateSession(s *session.Session) (tea.Model, tea.Cmd) {
 	m.focused = false
 	m.focusRow = 0
 	m.statusMsg = ""
+	session.SaveActiveSession(s.Name)
 	m.refresh()
 	windowIdx := m.activeWindowIdx
 	return m, func() tea.Msg {

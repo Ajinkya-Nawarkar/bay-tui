@@ -32,7 +32,7 @@ var keys = keyMap{
 		key.WithHelp("r", "next repo"),
 	),
 	FocusToggle: key.NewBinding(
-		key.WithKeys("q"),
+		key.WithKeys(" "),
 		key.WithHelp("`+space", "focus bar"),
 	),
 	Left: key.NewBinding(
@@ -72,8 +72,8 @@ var keys = keyMap{
 		key.WithHelp("R", "rename"),
 	),
 	Quit: key.NewBinding(
-		key.WithKeys("Q"),
-		key.WithHelp("Q", "quit bay"),
+		key.WithKeys("q"),
+		key.WithHelp("q", "quit bay"),
 	),
 	Escape: key.NewBinding(
 		key.WithKeys("esc"),

@@ -131,6 +131,7 @@ func (m Model) renderHintBar() string {
 			hint("d", "delete") + sep +
 			hint("R", "rename") + sep +
 			hint("m", "memory") + sep +
+			hint("q", "quit") + sep +
 			hint("esc", "exit")
 		return hints
 	}

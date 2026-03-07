@@ -2,9 +2,13 @@ package session
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+
+	"bay/internal/config"
 )
 
 // FindActiveSession detects the active session from the current tmux window.
@@ -27,6 +31,24 @@ func FindActiveSession() (*Session, error) {
 	}
 
 	return nil, fmt.Errorf("no bay session found for window %d", windowIdx)
+}
+
+func activeSessionPath() string {
+	return filepath.Join(config.BayDir(), ".active-session")
+}
+
+// SaveActiveSession persists the active session name to disk.
+func SaveActiveSession(name string) {
+	os.WriteFile(activeSessionPath(), []byte(name), 0644)
+}
+
+// LoadActiveSession reads the last active session name from disk.
+func LoadActiveSession() string {
+	data, err := os.ReadFile(activeSessionPath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 // currentWindowIndex returns the active tmux window index.

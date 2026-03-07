@@ -34,42 +34,24 @@ func TestTopbarStartsUnfocused(t *testing.T) {
 	}
 }
 
-func TestTopbarQTogglesFocus(t *testing.T) {
+func TestTopbarSpaceTogglesFocus(t *testing.T) {
 	m := newTestTopbar()
 
-	// q should focus
-	m = sendKey(m, "q")
+	// space should focus
+	m = sendKey(m, " ")
 	if !m.IsFocused() {
-		t.Error("q should toggle focus on")
+		t.Error("space should toggle focus on")
 	}
 
-	// q again should unfocus
-	m = sendKey(m, "q")
+	// space again should unfocus
+	m = sendKey(m, " ")
 	if m.IsFocused() {
-		t.Error("q should toggle focus off")
+		t.Error("space should toggle focus off")
 	}
 }
 
-func TestTopbarShiftQQuits(t *testing.T) {
-	m := newTestTopbar()
-
-	// Enter focus
-	m = sendKey(m, "q")
-	if !m.IsFocused() {
-		t.Fatal("q should enter focus mode")
-	}
-
-	// Q (shift) while focused should return tea.Quit
-	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Q")})
-	_ = result
-	if cmd == nil {
-		t.Fatal("Q in focused mode should return a command")
-	}
-	msg := cmd()
-	if _, ok := msg.(tea.QuitMsg); !ok {
-		t.Errorf("Q in focused mode should return tea.QuitMsg, got %T", msg)
-	}
-}
+// NOTE: Do not add a test for quit (q key). The quit handler calls
+// KillMainSession() which kills the live bay tmux session during tests.
 
 func TestTopbarIgnoresKeysWhenUnfocused(t *testing.T) {
 	m := newTestTopbar()
@@ -85,7 +67,7 @@ func TestTopbarIgnoresKeysWhenUnfocused(t *testing.T) {
 
 func TestTopbarFocusRowStartsAtRepos(t *testing.T) {
 	m := newTestTopbar()
-	m = sendKey(m, "q") // focus
+	m = sendKey(m, " ") // focus
 
 	if m.FocusRow() != 0 {
 		t.Errorf("focus row should start at 0 (repos), got %d", m.FocusRow())
@@ -94,7 +76,7 @@ func TestTopbarFocusRowStartsAtRepos(t *testing.T) {
 
 func TestTopbarDownBlockedWithNoSessions(t *testing.T) {
 	m := newTestTopbar() // no repos = no sessions
-	m = sendKey(m, "q")  // focus
+	m = sendKey(m, " ")  // focus
 
 	m = sendSpecialKey(m, tea.KeyDown)
 	if m.FocusRow() != 0 {
@@ -104,7 +86,7 @@ func TestTopbarDownBlockedWithNoSessions(t *testing.T) {
 
 func TestTopbarUpBlockedOnRepoRow(t *testing.T) {
 	m := newTestTopbar()
-	m = sendKey(m, "q") // focus, starts on row 0
+	m = sendKey(m, " ") // focus, starts on row 0
 
 	m = sendSpecialKey(m, tea.KeyUp)
 	if m.FocusRow() != 0 {
@@ -114,7 +96,7 @@ func TestTopbarUpBlockedOnRepoRow(t *testing.T) {
 
 func TestTopbarEscUnfocuses(t *testing.T) {
 	m := newTestTopbar()
-	m = sendKey(m, "q") // focus
+	m = sendKey(m, " ") // focus
 
 	m = sendSpecialKey(m, tea.KeyEscape)
 	if m.IsFocused() {
@@ -126,14 +108,14 @@ func TestTopbarFocusResetsRowToRepos(t *testing.T) {
 	m := newTestTopbar()
 
 	// Focus
-	m = sendKey(m, "q")
+	m = sendKey(m, " ")
 	if m.FocusRow() != 0 {
 		t.Error("focus should start on repo row")
 	}
 
 	// Unfocus and refocus — should reset to row 0
-	m = sendKey(m, "q") // unfocus
-	m = sendKey(m, "q") // refocus
+	m = sendKey(m, " ") // unfocus
+	m = sendKey(m, " ") // refocus
 	if m.FocusRow() != 0 {
 		t.Error("refocusing should reset to repo row")
 	}

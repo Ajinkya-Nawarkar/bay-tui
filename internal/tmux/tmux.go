@@ -402,7 +402,7 @@ func bindKeysImpl(run RunnerFunc) error {
 	// Use .0 to dynamically target pane index 0 in the active window.
 	// `+Space → focus topbar and toggle focused mode
 	run("bind-key", "Space", "run-shell",
-		"tmux send-keys -t .0 q; tmux select-pane -t .0")
+		"tmux send-keys -t .0 Space; tmux select-pane -t .0")
 
 	// `+Tab → cycle session (repeatable: `+Tab+Tab+Tab...)
 	run("bind-key", "-r", "Tab", "send-keys", "-t", ".0", "Tab")
