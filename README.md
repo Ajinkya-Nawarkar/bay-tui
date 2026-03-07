@@ -2,39 +2,47 @@
 
 A terminal session manager for developers who run multiple repos, branches, and AI agents side by side.
 
-bay groups your shells into **sessions** organized by repo. Switch between projects instantly. Restore your exact pane layout on restart. Keep Claude Code agents running alongside your regular terminals.
+You're juggling 3 repos. You've got a half-finished auth flow in one, a migration in another, and a hotfix you started yesterday. Here's your morning:
 
-## Why bay?
-
-- **One keystroke to switch context** — jump between repos and sessions without losing your place
-- **Pane layout persists across restarts** — quit and come back to exactly where you left off
-- **AI agents as first-class panes** — split a Claude Code agent next to your shell with `` `+a ``
-- **Session notes** — annotate what you're working on so you remember days later
-- **Built-in memory system** — sessions track episodic history and working state across agent conversations
-
-## Context & Memory
-
-The hardest part of working across multiple sessions isn't the code — it's remembering where you left off.
-
-bay solves this at three levels:
-
-**Session notes** — When you're deep in a debugging session, hit `N` and jot down what you're doing. Come back two days later and instantly know: "OAuth2 flow — stuck on token refresh, check middleware." No more `git log` archaeology to figure out what past-you was thinking.
-
-**Episodic history** — bay automatically records session events: when you activated a session, switched away, what your panes were doing. Search across all of it with `bay search "auth bug"` to find that terminal output from last Tuesday.
-
-**Working state** — Each session tracks its current task, git branch, and last summary. When you spin up a Claude Code agent, bay injects this context automatically — the agent already knows what you're working on, what other sessions are doing in the same repo, and recent activity. No copy-pasting, no "here's what I was doing" preamble.
-
-**Context injection rules** — Define files that should be injected into agent conversations per-repo with `bay rules add`. Design docs, API specs, coding standards — your agents start every conversation with the right context.
-
-```bash
-bay mem show              # See current session's memory state
-bay mem task "fix auth"   # Set what you're working on
-bay mem note "try v2 API" # Quick note for future reference
-bay search "migration"    # Full-text search across all session history
-bay rules add DESIGN.md   # Inject into agent context for this repo
+**Without bay:**
+```
+$ tmux ls                          # which session was which?
+$ cd ~/work/my-api && git log      # what was I doing here?
+$ claude                           # "so here's the context..."
+                                   # *pastes 40 lines of background*
 ```
 
-The result: you switch between five repos, quit for the day, come back tomorrow, and every session remembers exactly where you were. Your agents pick up mid-conversation like nothing happened.
+**With bay:**
+```
+$ bay
+```
+
+That's it. You're back. Every session, every pane, every agent — exactly where you left them. The topbar tells you what's going on at a glance:
+
+```
+╭──────────────────────────────────────────────────────────────╮
+│ bay   my-api │ frontend │ infra                              │
+│       [1:main*] [2:feature-auth] [3:hotfix]                  │
+│       OAuth2 flow — stuck on token refresh, check middleware │
+╰──────────────────────────────────────────────────────────────╯
+┌ shell ─────────────────────┐┌ claude ─────────────────────────┐
+│ ~/my-api (feature-auth) $  ││ Claude Code ready.              │
+│                            ││ Session context loaded:          │
+│                            ││  - task: fix auth flow           │
+│                            ││  - sibling: hotfix on main       │
+│                            ││  - last: refactored middleware   │
+└────────────────────────────┘└─────────────────────────────────┘
+```
+
+The agent already knows what you're working on. It read the session memory. You didn't paste anything.
+
+**Three things that matter:**
+
+1. `` `+a `` splits a Claude Code agent that inherits your session's full context — task, branch, sibling activity, history
+2. `` `+1 `` through `` `+9 `` jumps between sessions. `` `+r `` switches repos. Zero friction.
+3. Quit with `q`, come back tomorrow — pane layout, notes, memory, all restored
+
+bay is the workspace layer between you and tmux that makes multi-repo, multi-agent development feel like one continuous session instead of 15 disconnected terminals.
 
 ## Quick Start
 
@@ -52,19 +60,22 @@ bay
 
 On first run, bay walks you through setup — point it at your workspace directory and you're ready.
 
-## How It Works
+## Context & Memory
 
-bay runs inside a single tmux session. A persistent topbar shows your repos and sessions:
+**Session notes** — Hit `N` and jot down what you're doing. Come back two days later and instantly know: "OAuth2 flow — stuck on token refresh, check middleware."
 
+**Episodic history** — bay automatically records session events. Search across all of it with `bay search "auth bug"` to find that terminal output from last Tuesday.
+
+**Working state** — Each session tracks its current task, git branch, and last summary. Spin up a Claude Code agent and bay injects this context automatically — no copy-pasting, no preamble.
+
+**Context injection rules** — Define files that get injected into agent conversations per-repo with `bay rules add`. Design docs, API specs, coding standards — your agents start every conversation with the right context.
+
+```bash
+bay mem show              # See current session's memory state
+bay mem task "fix auth"   # Set what you're working on
+bay search "migration"    # Full-text search across all session history
+bay rules add DESIGN.md   # Inject into agent context for this repo
 ```
-╭─────────────────────────────────────────────────────╮
-│ bay   my-api │ frontend │ infra                     │
-│       [1:main*] [2:feature-auth] [3:hotfix]         │
-│       Implementing OAuth2 flow for /login endpoint  │
-╰─────────────────────────────────────────────────────╯
-```
-
-Each session owns a tmux window with your shell panes and agents. Switch sessions and bay moves the topbar, restores focus, and tracks everything.
 
 ## Key Bindings
 
