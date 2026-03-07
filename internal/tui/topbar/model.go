@@ -221,6 +221,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Focused-only keybinds
 		switch key {
 		case "q":
+			// Sync pane layout before quitting so cold boot restores panes
+			if m.activeSession != "" {
+				hooks.OnSessionDeactivate(m.activeSession, "", m.activeWindowIdx)
+			}
 			baytmux.KillMainSession()
 			return m, tea.Quit
 		case "esc":
@@ -390,10 +394,10 @@ func (m *Model) switchToSession(s *session.Session) error {
 		windowIdx = idx
 		s.TmuxWindow = idx
 
-		// Recreate additional panes from saved layout (cold boot recovery)
-		if len(s.Panes) > 1 {
+		// Recreate panes from saved layout (cold boot recovery)
+		if len(s.Panes) > 0 {
 			var tmuxPanes []baytmux.SessionPane
-			for _, p := range s.Panes[1:] {
+			for _, p := range s.Panes {
 				tmuxPanes = append(tmuxPanes, baytmux.SessionPane{
 					Type:    p.Type,
 					Cwd:     p.Cwd,

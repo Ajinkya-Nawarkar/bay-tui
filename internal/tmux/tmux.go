@@ -529,8 +529,9 @@ type PaneInfo struct {
 // SnapshotPaneLayout queries tmux for the current pane layout of a window.
 // Returns all panes except the topbar pane.
 func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
+	sep := "%%BAY%%"
 	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex),
-		"-F", "#{pane_id} #{pane_title} #{pane_start_command} #{pane_current_path}")
+		"-F", fmt.Sprintf("#{pane_id}%s#{pane_title}%s#{pane_start_command}%s#{pane_current_path}", sep, sep, sep))
 	if err != nil {
 		return nil, fmt.Errorf("list-panes: %w", err)
 	}
@@ -544,7 +545,7 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 			continue
 		}
 
-		parts := strings.SplitN(line, " ", 4)
+		parts := strings.SplitN(line, sep, 4)
 		if len(parts) < 4 {
 			continue
 		}
@@ -573,10 +574,26 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 	return panes, nil
 }
 
-// RecreateSessionPanes recreates additional panes in a window from saved layout.
-// The first pane is already created by CreateSessionWindow — this handles the rest.
+// RecreateSessionPanes recreates panes in a window from saved layout.
+// The first pane already exists (created by CreateSessionWindow). If it should
+// be an agent, we send the claude command to it. Additional panes are split.
 func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
-	for _, p := range panes {
+	firstPane := fmt.Sprintf("%s:%d.0", MainSession, windowIndex)
+
+	for i, p := range panes {
+		if i == 0 {
+			// First pane already exists — launch agent if needed, set title
+			if p.Type == "agent" {
+				run("send-keys", "-t", firstPane, "claude", "Enter")
+			}
+			if p.Title != "" {
+				run("select-pane", "-t", firstPane, "-T", p.Title)
+			} else {
+				run("select-pane", "-t", firstPane, "-T", "")
+			}
+			continue
+		}
+
 		dir := p.Cwd
 		if dir == "" {
 			continue
@@ -584,7 +601,6 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 
 		var command string
 		if p.Type == "agent" {
-			// Fresh Claude — SessionStart hook provides context injection
 			command = "bash -c \"claude\""
 		}
 
@@ -596,7 +612,6 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 			continue // Non-fatal: best-effort recreation
 		}
 
-		// Restore pane title if one was saved
 		if p.Title != "" {
 			run("select-pane", "-T", p.Title)
 		} else {
