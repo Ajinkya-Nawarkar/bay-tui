@@ -64,19 +64,27 @@ type Model struct {
 
 // New creates a new topbar model.
 func New(cfg *config.Config) Model {
+	m := newModel(cfg)
+	baytmux.InitTopbarPaneID()
+	m.refresh()
+	return m
+}
+
+// NewForTest creates a topbar model without tmux or filesystem side effects.
+func NewForTest(cfg *config.Config) Model {
+	return newModel(cfg)
+}
+
+func newModel(cfg *config.Config) Model {
 	ri := textinput.New()
 	ri.Placeholder = "new-name"
 	ri.CharLimit = 100
 	ri.Width = 25
 
-	m := Model{
+	return Model{
 		cfg:         cfg,
 		renameInput: ri,
 	}
-
-	baytmux.InitTopbarPaneID()
-	m.refresh()
-	return m
 }
 
 // autoActivateMsg triggers auto-activation of the first session on startup.

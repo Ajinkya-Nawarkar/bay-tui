@@ -9,12 +9,12 @@ import (
 	"bay/internal/tui/topbar"
 )
 
-// newTestTopbar creates a topbar model with empty config (no scan dirs = no repos).
+// newTestTopbar creates a topbar model without tmux or filesystem side effects.
 func newTestTopbar() topbar.Model {
 	cfg := &config.Config{
-		ScanDirs: []string{}, // no repos — avoids tmux calls
+		ScanDirs: []string{},
 	}
-	return topbar.New(cfg)
+	return topbar.NewForTest(cfg)
 }
 
 func sendKey(m topbar.Model, key string) topbar.Model {
