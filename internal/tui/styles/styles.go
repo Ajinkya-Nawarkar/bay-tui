@@ -57,11 +57,11 @@ var (
 
 	// Help bar
 	HelpBar = lipgloss.NewStyle().
-		Foreground(Muted)
+		Foreground(Dim)
 
 	HelpKey = lipgloss.NewStyle().
-		Foreground(Secondary).
-		Bold(true)
+		Foreground(lipgloss.Color("#9CA3AF")).
+		Italic(true)
 
 	// Status
 	StatusBar = lipgloss.NewStyle().

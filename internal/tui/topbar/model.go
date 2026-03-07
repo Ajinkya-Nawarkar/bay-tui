@@ -2,6 +2,7 @@ package topbar
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -101,6 +102,7 @@ func (m *Model) refresh() {
 }
 
 // activeRepoSessions returns sessions belonging to the active repo.
+// Sessions whose working directory no longer exists are excluded.
 func (m *Model) activeRepoSessions() []*session.Session {
 	if len(m.repos) == 0 {
 		return nil
@@ -109,6 +111,9 @@ func (m *Model) activeRepoSessions() []*session.Session {
 	var result []*session.Session
 	for _, s := range m.sessions {
 		if s.Repo == repoName {
+			if _, err := os.Stat(s.WorkingDir); err != nil {
+				continue
+			}
 			result = append(result, s)
 		}
 	}

@@ -95,7 +95,7 @@ func runTUI() error {
 	go memory.ProcessPendingSummaries()
 
 	app := tui.NewApp(cfg, firstRun)
-	p := tea.NewProgram(app)
+	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		return err
 	}

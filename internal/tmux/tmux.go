@@ -14,7 +14,7 @@ const (
 	MainSession = "bay"
 
 	// TopbarHeight is the fixed height of the topbar in lines.
-	TopbarHeight = "5"
+	TopbarHeight = "4"
 
 	// Prefix kept for legacy/test compatibility.
 	Prefix = "bay-"
@@ -337,7 +337,9 @@ func bindKeysImpl(run RunnerFunc) error {
 	run("set-option", "-g", "status-style", "bg=#1F2937,fg=#9CA3AF")
 	run("set-option", "-g", "status-left", " #{?client_prefix,⌘ CMD, bay} ")
 	run("set-option", "-g", "status-left-style", "#{?client_prefix,bg=#7C3AED fg=#F9FAFB bold,bg=#374151 fg=#06B6D4 bold}")
-	run("set-option", "-g", "status-right", "")
+	run("set-option", "-g", "status-right", "#(cat ~/.bay/.topbar-hints)")
+	run("set-option", "-g", "status-right-length", "120")
+	run("set-option", "-g", "status-interval", "1")
 	run("set-option", "-g", "window-status-current-style", "fg=#06B6D4,bold")
 	run("set-option", "-g", "window-status-style", "fg=#6B7280")
 	// Hide window list from status bar — the topbar IS the session switcher.
@@ -407,8 +409,8 @@ func bindKeysImpl(run RunnerFunc) error {
 	// `+Tab → cycle session (repeatable: `+Tab+Tab+Tab...)
 	run("bind-key", "-r", "Tab", "send-keys", "-t", ".0", "Tab")
 
-	// `+r → cycle repo
-	run("bind-key", "r", "send-keys", "-t", ".0", "r")
+	// `+r → cycle repo (repeatable)
+	run("bind-key", "-r", "r", "send-keys", "-t", ".0", "r")
 
 	// `+0-9 → jump to session by index
 	for i := 0; i <= 9; i++ {
@@ -548,6 +550,19 @@ type SessionPane struct {
 	Type    string
 	Cwd     string
 	Command string
+}
+
+// hintsFile returns the path where topbar hints are written for tmux status bar.
+func hintsFile() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".bay", ".topbar-hints")
+}
+
+// WriteTopbarHints writes plain-text hints to disk for tmux status-right to display.
+func WriteTopbarHints(hints string) {
+	f := hintsFile()
+	os.MkdirAll(filepath.Dir(f), 0o755)
+	os.WriteFile(f, []byte(hints), 0o644)
 }
 
 // ListBaySessions is kept for compatibility.

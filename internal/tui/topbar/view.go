@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	baytmux "bay/internal/tmux"
 	"bay/internal/tui/styles"
 )
 
@@ -42,10 +43,10 @@ func (m Model) View() string {
 		row2 = "      " + styles.NoSessions.Render(m.statusMsg)
 	}
 
-	// Row 3: context-aware shortcut hints
-	row3 := m.renderHintBar()
+	// Write hints to file for tmux status bar
+	baytmux.WriteTopbarHints(m.renderHintBarPlain())
 
-	content := row1 + "\n" + row2 + "\n" + row3
+	content := row1 + "\n" + row2
 
 	// Choose border color based on focus state
 	var box lipgloss.Style
@@ -114,37 +115,37 @@ func (m Model) renderSessionRow() string {
 	return pad + strings.Join(tabs, " ")
 }
 
-func (m Model) renderHintBar() string {
-	sep := styles.HelpBar.Render(" │ ")
+func (m Model) renderHintBarPlain() string {
+	gap := "   "
 
 	if m.mode == modeConfirmDelete {
-		return hint("y", "confirm") + sep + hint("n", "cancel")
+		return tmuxHint("y", "confirm") + gap + tmuxHint("n", "cancel")
 	}
 	if m.mode == modeRename {
-		return hint("enter", "save") + sep + hint("esc", "cancel")
+		return tmuxHint("enter", "save") + gap + tmuxHint("esc", "cancel")
 	}
 
 	if m.focused {
-		hints := hint("←→", "navigate") + sep +
-			hint("enter", "activate") + sep +
-			hint("n", "new") + sep +
-			hint("d", "delete") + sep +
-			hint("R", "rename") + sep +
-			hint("m", "memory") + sep +
-			hint("q", "quit") + sep +
-			hint("esc", "exit")
-		return hints
+		return tmuxHint("←→", "navigate") + gap +
+			tmuxHint("enter", "activate") + gap +
+			tmuxHint("n", "new") + gap +
+			tmuxHint("d", "delete") + gap +
+			tmuxHint("R", "rename") + gap +
+			tmuxHint("m", "memory") + gap +
+			tmuxHint("q", "quit") + gap +
+			tmuxHint("esc", "exit")
 	}
 
 	// Unfocused — show prefix shortcuts
-	return hint("`+space", "focus") + sep +
-		hint("`+tab", "cycle") + sep +
-		hint("`+r", "repo") + sep +
-		hint("`+0-9", "jump")
+	return tmuxHint("`+space", "focus") + gap +
+		tmuxHint("`+tab", "cycle") + gap +
+		tmuxHint("`+r", "repo") + gap +
+		tmuxHint("`+0-9", "jump")
 }
 
-func hint(key, desc string) string {
-	return styles.HelpKey.Render(key) + " " + styles.HelpBar.Render(desc)
+// tmuxHint formats a key+description pair with tmux color codes.
+func tmuxHint(key, desc string) string {
+	return "#[fg=#F97316,bold]" + key + " #[fg=#9CA3AF,nobold]" + desc
 }
 
 func truncate(s string, maxLen int) string {
