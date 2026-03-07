@@ -90,6 +90,42 @@ verify_checksum() {
     fi
 }
 
+setup_path() {
+    # Already in PATH — nothing to do
+    case ":${PATH}:" in
+        *":${INSTALL_DIR}:"*) return ;;
+    esac
+
+    PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
+
+    # Find the right shell rc file
+    RC_FILE=""
+    if [ -f "$HOME/.zshrc" ]; then
+        RC_FILE="$HOME/.zshrc"
+    elif [ -f "$HOME/.bashrc" ]; then
+        RC_FILE="$HOME/.bashrc"
+    elif [ -f "$HOME/.profile" ]; then
+        RC_FILE="$HOME/.profile"
+    fi
+
+    if [ -z "$RC_FILE" ]; then
+        echo ""
+        warn "Could not find shell profile. Add this manually:"
+        echo "  $PATH_LINE"
+        return
+    fi
+
+    # Already in rc file
+    if grep -q ".local/bin" "$RC_FILE" 2>/dev/null; then
+        return
+    fi
+
+    echo "" >> "$RC_FILE"
+    echo "# bay — added by installer" >> "$RC_FILE"
+    echo "$PATH_LINE" >> "$RC_FILE"
+    info "Added $INSTALL_DIR to PATH in $RC_FILE"
+}
+
 main() {
     info "Installing bay..."
 
@@ -130,20 +166,15 @@ main() {
         esac
     fi
 
+    setup_path
+
     echo ""
     info "bay ${version} installed successfully!"
-    case ":${PATH}:" in
-        *":${INSTALL_DIR}:"*) ;;
-        *)
-            echo ""
-            warn "${INSTALL_DIR} is not in your PATH."
-            warn "Add it by running:"
-            echo ""
-            echo "  echo 'export PATH=\"\${HOME}/.local/bin:\${PATH}\"' >> ~/.zshrc"
-            echo ""
-            ;;
-    esac
-    info "Get started: bay setup"
+    echo ""
+    info "Open a new terminal and run:"
+    echo ""
+    echo "  bay"
+    echo ""
 }
 
 main

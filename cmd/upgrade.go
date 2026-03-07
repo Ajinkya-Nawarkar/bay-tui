@@ -24,17 +24,13 @@ type ghAsset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-// Upgrade downloads the latest release binary and replaces the current one.
+// Upgrade downloads the latest release binary and installs to ~/.local/bin/bay.
 func Upgrade() error {
-	// Find where the current binary lives
-	currentBin, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("finding current binary: %w", err)
+	installDir := filepath.Join(os.Getenv("HOME"), ".local", "bin")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		return fmt.Errorf("creating install dir: %w", err)
 	}
-	currentBin, err = filepath.EvalSymlinks(currentBin)
-	if err != nil {
-		return fmt.Errorf("resolving symlink: %w", err)
-	}
+	currentBin := filepath.Join(installDir, "bay")
 
 	fmt.Println("Fetching latest release...")
 	resp, err := http.Get(repoAPI)

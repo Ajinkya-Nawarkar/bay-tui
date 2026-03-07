@@ -2,6 +2,7 @@ package setup
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,86 @@ type Model struct {
 	err              error
 }
 
+// installDir returns ~/.local/bin.
+func installDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "bin")
+}
+
+// installBinary copies the current bay binary to ~/.local/bin/bay and ensures
+// ~/.local/bin is in the user's shell PATH.
+func installBinary() error {
+	dest := filepath.Join(installDir(), "bay")
+
+	// Already installed here — skip copy
+	if exe, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			if resolved == dest {
+				return nil
+			}
+		}
+	}
+
+	if err := os.MkdirAll(installDir(), 0755); err != nil {
+		return err
+	}
+
+	// Copy current binary to install dir
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	src, err := os.Open(exe)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dst, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
+
+	// Ensure ~/.local/bin is in PATH via shell rc
+	ensurePath()
+	return nil
+}
+
+// ensurePath adds ~/.local/bin to PATH in the user's shell rc file if not already present.
+func ensurePath() {
+	home, _ := os.UserHomeDir()
+	pathLine := `export PATH="$HOME/.local/bin:$PATH"`
+
+	// Try zshrc first, fall back to bashrc
+	rcFile := filepath.Join(home, ".zshrc")
+	if _, err := os.Stat(rcFile); err != nil {
+		rcFile = filepath.Join(home, ".bashrc")
+	}
+
+	data, err := os.ReadFile(rcFile)
+	if err != nil {
+		return
+	}
+
+	// Already has it
+	if strings.Contains(string(data), ".local/bin") {
+		return
+	}
+
+	// Append
+	f, err := os.OpenFile(rcFile, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString("\n# bay — added by bay setup\n" + pathLine + "\n")
+}
+
 // ensureClaudeHook adds the bay context SessionStart hook to ~/.claude/settings.json.
 func ensureClaudeHook() {
 	home, _ := os.UserHomeDir()
@@ -56,15 +137,11 @@ func ensureClaudeHook() {
 		hooks = map[string]any{}
 	}
 
-	// Resolve full binary path for the hook command
-	hookCmd := "bay context"
-	if exe, err := os.Executable(); err == nil {
-		hookCmd = exe + " context"
-	}
+	// Always use the stable install path
+	hookCmd := filepath.Join(installDir(), "bay") + " context"
 
 	// Check existing SessionStart hooks
 	if existing, ok := hooks["SessionStart"]; ok {
-		// Check if bay context is already configured (matches both "bay context" and full path)
 		if arr, ok := existing.([]any); ok {
 			for _, item := range arr {
 				if m, ok := item.(map[string]any); ok {
@@ -82,7 +159,7 @@ func ensureClaudeHook() {
 		}
 	}
 
-	// Add bay context hook with full binary path
+	// Add bay context hook
 	bayHook := map[string]any{
 		"matcher": "",
 		"hooks": []any{
@@ -183,6 +260,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = err
 					return m, nil
 				}
+				// Install binary to ~/.local/bin and add to PATH
+				installBinary()
 				// Auto-configure Claude Code SessionStart hook
 				ensureClaudeHook()
 				m.step = stepDone
