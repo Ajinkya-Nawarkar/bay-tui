@@ -351,9 +351,11 @@ func bindKeysImpl(run RunnerFunc) error {
 	topbarIDFile := "$HOME/.bay/.topbar-pane-id"
 	resizeTopbar := fmt.Sprintf("tmux resize-pane -t $(cat %s) -y %s 2>/dev/null || true", topbarIDFile, TopbarHeight)
 
-	// Hook: re-lock topbar height whenever a pane is closed.
-	run("set-hook", "-g", "after-kill-pane",
-		fmt.Sprintf("run-shell '%s'", resizeTopbar))
+	// Hooks: re-lock topbar height on layout-changing events.
+	for _, hook := range []string{"after-kill-pane", "after-split-window", "after-select-window", "client-session-changed"} {
+		run("set-hook", "-g", hook,
+			fmt.Sprintf("run-shell '%s'", resizeTopbar))
+	}
 
 	// Backtick as a second prefix
 	run("set-option", "-g", "prefix2", "`")
