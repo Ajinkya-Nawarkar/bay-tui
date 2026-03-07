@@ -202,7 +202,8 @@ func MoveTopbarToWindow(windowIndex int) error {
 	targetPane := fmt.Sprintf("%s:%d.0", MainSession, windowIndex)
 
 	// move-pane atomically moves the pane to the target window above the first pane.
-	if out, err := run("move-pane", "-vb", "-s", target, "-t", targetPane, "-l", TopbarHeight); err != nil {
+	// -f makes it span the full window width, not just the target pane's column.
+	if out, err := run("move-pane", "-fvb", "-s", target, "-t", targetPane, "-l", TopbarHeight); err != nil {
 		return fmt.Errorf("move-pane: %w (tmux: %s)", err, out)
 	}
 
