@@ -14,7 +14,7 @@ const (
 	MainSession = "bay"
 
 	// TopbarHeight is the fixed height of the topbar in lines.
-	TopbarHeight = "4"
+	TopbarHeight = "5"
 
 	// Prefix kept for legacy/test compatibility.
 	Prefix = "bay-"
@@ -449,6 +449,12 @@ func bindKeysImpl(run RunnerFunc) error {
 		key := fmt.Sprintf("%d", i)
 		run("bind-key", key, "send-keys", "-t", ".0", key)
 	}
+
+	// { and } to swap pane positions (up/down in tmux layout order)
+	run("bind-key", "{", "run-shell",
+		fmt.Sprintf("tmux swap-pane -U; %s; %s", resizeTopbar, syncPanes))
+	run("bind-key", "}", "run-shell",
+		fmt.Sprintf("tmux swap-pane -D; %s; %s", resizeTopbar, syncPanes))
 
 	// , to rename pane — prompts for a label, sets it as the pane title.
 	// Empty input clears the title (reverts to directory basename).

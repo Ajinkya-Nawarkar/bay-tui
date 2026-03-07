@@ -112,6 +112,10 @@ var (
 				Foreground(Focus). // yellow — focus cursor on session row
 				Bold(true)
 
+	SessionTabStale = lipgloss.NewStyle().
+			Foreground(Dim). // dimmed — working dir missing
+			Strikethrough(true)
+
 	// Layout
 	AppContainer = lipgloss.NewStyle().
 			Padding(0, 1)

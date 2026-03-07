@@ -22,4 +22,5 @@ type Session struct {
 	CreatedAt      time.Time `yaml:"created_at"`
 	TmuxWindow     int       `yaml:"tmux_window,omitempty"`
 	Panes          []Pane    `yaml:"panes"`
+	Note           string    `yaml:"note,omitempty"`
 }

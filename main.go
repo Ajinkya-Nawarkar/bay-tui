@@ -143,6 +143,7 @@ func printHelp() {
 		"\n" +
 		"Focused mode (`+space to enter, esc to leave):\n" +
 		"  h/l     Switch repo      n/d/R   New/delete/rename session\n" +
+		"  N       Edit session note\n" +
 		"  m       Memory viewer    Enter   Activate session\n" +
 		"  q       Quit bay         esc     Leave focus mode\n" +
 		"\n" +
@@ -151,6 +152,7 @@ func printHelp() {
 		"  d               Vertical split\n" +
 		"  D               Horizontal split\n" +
 		"  w               Close pane\n" +
+		"  {/}             Swap pane up/down\n" +
 		"  s               Toggle topbar/dev focus\n" +
 		"  ``              Type a literal backtick\n" +
 		"  Click           Focus any pane"

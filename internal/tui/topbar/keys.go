@@ -18,6 +18,7 @@ type keyMap struct {
 	Memory key.Binding
 	Delete key.Binding
 	Rename key.Binding
+	Note   key.Binding
 	Quit   key.Binding
 	Escape key.Binding
 }
@@ -70,6 +71,10 @@ var keys = keyMap{
 	Rename: key.NewBinding(
 		key.WithKeys("R"),
 		key.WithHelp("R", "rename"),
+	),
+	Note: key.NewBinding(
+		key.WithKeys("N"),
+		key.WithHelp("N", "edit note"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q"),

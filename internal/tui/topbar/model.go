@@ -22,6 +22,7 @@ const (
 	modeNormal mode = iota
 	modeRename
 	modeConfirmDelete
+	modeEditNote
 )
 
 // SwitchToCreateMsg tells the app to switch to create screen.
@@ -54,6 +55,7 @@ type Model struct {
 	selectedSessionIdx int
 	mode               mode
 	renameInput        textinput.Model
+	noteInput          textinput.Model
 	deleteTarget       string
 	activeSession      string
 	activeWindowIdx    int
@@ -82,9 +84,15 @@ func newModel(cfg *config.Config) Model {
 	ri.CharLimit = 100
 	ri.Width = 25
 
+	ni := textinput.New()
+	ni.Placeholder = "session note"
+	ni.CharLimit = 200
+	ni.Width = 60
+
 	return Model{
 		cfg:         cfg,
 		renameInput: ri,
+		noteInput:   ni,
 	}
 }
 
@@ -102,7 +110,7 @@ func (m *Model) refresh() {
 }
 
 // activeRepoSessions returns sessions belonging to the active repo.
-// Sessions whose working directory no longer exists are excluded.
+// Stale sessions (missing working directory) are included for visibility.
 func (m *Model) activeRepoSessions() []*session.Session {
 	if len(m.repos) == 0 {
 		return nil
@@ -111,13 +119,16 @@ func (m *Model) activeRepoSessions() []*session.Session {
 	var result []*session.Session
 	for _, s := range m.sessions {
 		if s.Repo == repoName {
-			if _, err := os.Stat(s.WorkingDir); err != nil {
-				continue
-			}
 			result = append(result, s)
 		}
 	}
 	return result
+}
+
+// isSessionStale returns true if the session's working directory no longer exists.
+func isSessionStale(s *session.Session) bool {
+	_, err := os.Stat(s.WorkingDir)
+	return err != nil
 }
 
 // activeRepoName returns the name of the currently active repo.
@@ -166,12 +177,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// Handle rename mode
+		// Handle modal input modes
 		if m.mode == modeRename {
 			return m.updateRename(msg)
 		}
 		if m.mode == modeConfirmDelete {
 			return m.updateConfirmDelete(msg)
+		}
+		if m.mode == modeEditNote {
+			return m.updateEditNote(msg)
 		}
 
 		key := msg.String()
@@ -221,9 +235,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Focused-only keybinds
 		switch key {
 		case "q":
-			// Sync pane layout before quitting so cold boot restores panes
-			if m.activeSession != "" {
-				hooks.OnSessionDeactivate(m.activeSession, "", m.activeWindowIdx)
+			// Sync ALL sessions with live windows, not just the active one
+			allSessions, _ := session.List()
+			for _, s := range allSessions {
+				if s.TmuxWindow != 0 && baytmux.WindowExists(s.TmuxWindow) {
+					hooks.SyncPaneLayout(s.Name, s.TmuxWindow)
+				}
 			}
 			baytmux.KillMainSession()
 			return m, tea.Quit
@@ -276,6 +293,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.startDelete()
 		case "R":
 			return m.startRename()
+		case "N":
+			return m.startEditNote()
 		}
 	}
 
@@ -358,6 +377,10 @@ func (m Model) activateCurrentSession() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) activateSession(s *session.Session) (tea.Model, tea.Cmd) {
+	if isSessionStale(s) {
+		m.statusMsg = "Session directory missing — delete with d"
+		return m, clearStatusAfter(3 * time.Second)
+	}
 	if err := m.switchToSession(s); err != nil {
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
 		return m, nil
@@ -543,6 +566,58 @@ func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.renameInput, cmd = m.renameInput.Update(msg)
 		return m, cmd
 	}
+}
+
+func (m Model) startEditNote() (tea.Model, tea.Cmd) {
+	if m.activeSession == "" {
+		m.statusMsg = "No active session"
+		return m, nil
+	}
+	m.mode = modeEditNote
+	// Pre-fill with existing note
+	s, err := session.Load(m.activeSession)
+	if err == nil {
+		m.noteInput.SetValue(s.Note)
+	} else {
+		m.noteInput.SetValue("")
+	}
+	m.noteInput.Focus()
+	return m, textinput.Blink
+}
+
+func (m Model) updateEditNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		note := m.noteInput.Value()
+		s, err := session.Load(m.activeSession)
+		if err == nil {
+			s.Note = note
+			session.Save(s)
+		}
+		m.mode = modeNormal
+		m.refresh()
+		return m, nil
+	case "esc":
+		m.mode = modeNormal
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.noteInput, cmd = m.noteInput.Update(msg)
+		return m, cmd
+	}
+}
+
+// activeSessionNote returns the note for the currently active session.
+func (m *Model) activeSessionNote() string {
+	if m.activeSession == "" {
+		return ""
+	}
+	for _, s := range m.sessions {
+		if s.Name == m.activeSession {
+			return s.Note
+		}
+	}
+	return ""
 }
 
 // Refresh reloads data (called from parent after returning from create/setup).

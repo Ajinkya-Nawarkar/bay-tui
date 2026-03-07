@@ -43,10 +43,13 @@ func (m Model) View() string {
 		row2 = "      " + styles.NoSessions.Render(m.statusMsg)
 	}
 
+	// Row 3: session note
+	row3 := m.renderNoteRow()
+
 	// Write hints to file for tmux status bar
 	baytmux.WriteTopbarHints(m.renderHintBarPlain())
 
-	content := row1 + "\n" + row2
+	content := row1 + "\n" + row2 + "\n" + row3
 
 	// Choose border color based on focus state
 	var box lipgloss.Style
@@ -92,20 +95,27 @@ func (m Model) renderSessionRow() string {
 	for i, s := range sessions {
 		isActive := s.Name == m.activeSession
 		isSelected := m.focused && m.focusRow == 1 && i == m.selectedSessionIdx
+		stale := isSessionStale(s)
 
 		displayIdx := i + 1
 		var label string
+		staleMark := ""
+		if stale {
+			staleMark = " \u2717" // ✗
+		}
 		if isSelected {
-			label = fmt.Sprintf("\u25b6%d:%s\u25c0", displayIdx, s.Name) // ▶1:name◀
+			label = fmt.Sprintf("\u25b6%d:%s%s\u25c0", displayIdx, s.Name, staleMark) // ▶1:name ✗◀
 		} else if isActive {
-			label = fmt.Sprintf("[%d:%s*]", displayIdx, s.Name)
+			label = fmt.Sprintf("[%d:%s%s*]", displayIdx, s.Name, staleMark)
 		} else {
-			label = fmt.Sprintf("[%d:%s]", displayIdx, s.Name)
+			label = fmt.Sprintf("[%d:%s%s]", displayIdx, s.Name, staleMark)
 		}
 
 		switch {
 		case isSelected:
 			tabs = append(tabs, styles.SessionTabFocused.Render(label))
+		case stale:
+			tabs = append(tabs, styles.SessionTabStale.Render(label))
 		case isActive:
 			tabs = append(tabs, styles.SessionTabActive.Render(label))
 		default:
@@ -114,6 +124,21 @@ func (m Model) renderSessionRow() string {
 	}
 
 	return pad + strings.Join(tabs, " ")
+}
+
+func (m Model) renderNoteRow() string {
+	pad := "      "
+	if m.mode == modeEditNote {
+		return pad + "Note: " + m.noteInput.View()
+	}
+	note := m.activeSessionNote()
+	if note == "" {
+		if m.focused {
+			return pad + styles.NoSessions.Render("no note — N to add")
+		}
+		return pad + styles.NoSessions.Render("no note")
+	}
+	return pad + styles.HelpBar.Render(note)
 }
 
 func (m Model) renderHintBarPlain() string {
@@ -126,12 +151,17 @@ func (m Model) renderHintBarPlain() string {
 		return tmuxHint("enter", "save") + gap + tmuxHint("esc", "cancel")
 	}
 
+	if m.mode == modeEditNote {
+		return tmuxHint("enter", "save") + gap + tmuxHint("esc", "cancel")
+	}
+
 	if m.focused {
 		return tmuxHint("←→", "navigate") + gap +
 			tmuxHint("enter", "activate") + gap +
 			tmuxHint("n", "new") + gap +
 			tmuxHint("d", "delete") + gap +
 			tmuxHint("R", "rename") + gap +
+			tmuxHint("N", "note") + gap +
 			tmuxHint("m", "memory") + gap +
 			tmuxHint("q", "quit") + gap +
 			tmuxHint("esc", "exit")
@@ -146,7 +176,8 @@ func (m Model) renderHintBarPlain() string {
 		tmuxHint("`+d/D", "split") + gap +
 		tmuxHint("`+w", "close") + gap +
 		tmuxHint("`+s", "toggle") + gap +
-		tmuxHint("`+arrows", "nav")
+		tmuxHint("`+arrows", "nav") + gap +
+		tmuxHint("`+{/}", "swap")
 }
 
 // tmuxHint formats a key+description pair with tmux color codes.
