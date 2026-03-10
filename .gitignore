@@ -9,3 +9,15 @@ DESIGN.md
 
 # OS junk
 .DS_Store
+
+# Python
+venv/
+
+# Editor
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Env
+.env

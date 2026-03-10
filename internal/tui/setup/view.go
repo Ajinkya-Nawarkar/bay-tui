@@ -11,7 +11,8 @@ func (m Model) View() string {
 	switch m.step {
 	case stepWelcome:
 		return styles.AppContainer.Render(
-			styles.Title.Render(" bay") + "\n\n" +
+			styles.Title.Render(" bay") + "\n" +
+				styles.HelpBar.Render("by Ajinkya Nawarkar <3") + "\n\n" +
 				"Welcome to bay! Let's configure your workspace.\n\n" +
 				"bay organizes your dev sessions by repo, with built-in\n" +
 				"git worktree management and tmux integration.\n\n" +

@@ -47,8 +47,8 @@ bay is the workspace layer between you and tmux that makes multi-repo, multi-age
 ## Quick Start
 
 ```bash
-# Install
-go install github.com/Ajinkya-Nawarkar/bay-tui@latest
+# Install (macOS / Linux)
+curl -fsSL https://raw.githubusercontent.com/Ajinkya-Nawarkar/bay-tui/main/install.sh | sh
 
 # Or build from source
 git clone https://github.com/Ajinkya-Nawarkar/bay-tui.git
@@ -102,6 +102,8 @@ In **focus mode** (`` `+space ``):
 | `d` | Delete session |
 | `R` | Rename session |
 | `N` | Edit session note |
+| `m` | Memory viewer |
+| `S` | Settings |
 | `q` | Quit bay |
 
 ## Commands

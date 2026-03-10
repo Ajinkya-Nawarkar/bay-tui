@@ -7,6 +7,8 @@ import (
 	"bay/cmd"
 )
 
+var Version = "dev"
+
 func main() {
 	args := os.Args[1:]
 
@@ -102,6 +104,10 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "version", "--version", "-v":
+		fmt.Printf("bay %s — by Ajinkya Nawarkar\n", Version)
+		fmt.Println("https://github.com/Ajinkya-Nawarkar/bay-tui")
+
 	case "help", "--help", "-h":
 		printHelp()
 
@@ -125,6 +131,7 @@ func printHelp() {
 		"  bay build        Rebuild bay from latest source\n" +
 		"  bay upgrade      Download and install latest release\n" +
 		"  bay uninstall    Remove all bay data and Claude hooks\n" +
+		"  bay version      Show version\n" +
 		"  bay help         Show this help\n" +
 		"\n" +
 		"Memory:\n" +

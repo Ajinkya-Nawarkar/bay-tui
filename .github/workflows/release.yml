@@ -75,7 +75,7 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -ldflags "-s -w" -o bay .
+        run: go build -ldflags "-s -w -X main.Version=${{ needs.tag.outputs.version }}" -o bay .
 
       - name: Package
         run: tar -czf bay-${{ needs.tag.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz bay
