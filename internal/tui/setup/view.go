@@ -43,6 +43,15 @@ func (m Model) View() string {
 				styles.HelpBar.Render("Press 1 or 2 to select, Enter to confirm"),
 		)
 
+	case stepAgentCmd:
+		return styles.AppContainer.Render(
+			styles.Title.Render(" bay setup") + "\n\n" +
+				styles.InputLabel.Render("What command should `+a run?") + "\n" +
+				"Enter the CLI agent to launch in splits:\n\n" +
+				m.agentInput.View() + "\n\n" +
+				styles.HelpBar.Render("Press Enter to continue"),
+		)
+
 	case stepDone:
 		if m.err != nil {
 			return styles.AppContainer.Render(
@@ -59,7 +68,8 @@ func (m Model) View() string {
 				styles.SuccessText.Render("Config saved to ~/.bay/config.yaml") + "\n\n" +
 				fmt.Sprintf("  Scan dirs:   %s\n", scanDirs) +
 				fmt.Sprintf("  Worktrees:   %s\n", m.cfg.Defaults.WorktreeLocation) +
-				fmt.Sprintf("  Shell:       %s\n", m.cfg.Defaults.Shell) + "\n" +
+				fmt.Sprintf("  Shell:       %s\n", m.cfg.Defaults.Shell) +
+			fmt.Sprintf("  Agent:       %s\n", m.cfg.Defaults.Agent) + "\n" +
 				styles.HelpBar.Render("Press Enter to continue to bay"),
 		)
 	}

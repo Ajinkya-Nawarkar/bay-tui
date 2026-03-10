@@ -330,18 +330,22 @@ type RunnerFunc func(args ...string) (string, error)
 
 // BindKeysWithRunner sets up tmux options using the provided runner function.
 // This allows testing without a real tmux server.
-func BindKeysWithRunner(runner RunnerFunc) error {
-	return bindKeysImpl(runner)
+func BindKeysWithRunner(runner RunnerFunc, agentCmd string) error {
+	return bindKeysImpl(runner, agentCmd)
 }
 
 // BindKeys sets up tmux options for the bay session.
-func BindKeys() error {
-	return bindKeysImpl(run)
+func BindKeys(agentCmd string) error {
+	return bindKeysImpl(run, agentCmd)
 }
 
-func bindKeysImpl(run RunnerFunc) error {
+func bindKeysImpl(run RunnerFunc, agentCmd string) error {
+	if agentCmd == "" {
+		agentCmd = "claude"
+	}
 	// Mouse
 	run("set-option", "-g", "mouse", "on")
+	run("set-option", "-g", "focus-events", "on")
 	// Prevent clicking window names in the status bar from switching windows.
 	run("unbind-key", "-n", "MouseDown1Status")
 	run("unbind-key", "-n", "MouseDown1StatusLeft")
@@ -415,11 +419,11 @@ func bindKeysImpl(run RunnerFunc) error {
 	run("bind-key", "-r", "D", "run-shell",
 		fmt.Sprintf("tmux split-window -v -c '#{pane_current_path}' && %s", resizeTopbar))
 
-	// a for agent split — vertical split running claude in same dir
-	// Uses bash -c so Claude Code's SessionStart hook (bay context) fires correctly.
-	// Auto-labels the pane "claude" so the border shows it.
+	// a for agent split — vertical split running the configured agent in same dir
+	// Uses bash -c so the agent's SessionStart hook fires correctly.
+	// Auto-labels the pane with the agent command so the border shows it.
 	run("bind-key", "-r", "a", "run-shell",
-		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' 'bash -c \"claude\"' && tmux select-pane -T claude && %s", resizeTopbar))
+		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' 'bash -c \"%s\"' && tmux select-pane -T %s && %s", agentCmd, agentCmd, resizeTopbar))
 
 	// w to close pane — guard by comparing pane_id against topbar's persisted ID.
 	run("bind-key", "-r", "w", "if-shell",

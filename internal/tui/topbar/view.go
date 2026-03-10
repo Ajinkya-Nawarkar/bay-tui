@@ -38,12 +38,7 @@ func (m Model) View() string {
 	// Row 2: sessions for active repo (or status line during rename/delete)
 	row2 := m.renderSessionRow()
 
-	// Status message overlays row2 when set
-	if m.statusMsg != "" {
-		row2 = "      " + styles.NoSessions.Render(m.statusMsg)
-	}
-
-	// Row 3: session note
+	// Row 3: session note (or transient status message)
 	row3 := m.renderNoteRow()
 
 	// Write hints to file for tmux status bar
@@ -131,12 +126,19 @@ func (m Model) renderNoteRow() string {
 	if m.mode == modeEditNote {
 		return pad + "Note: " + m.noteInput.View()
 	}
-	note := m.activeSessionNote()
+	// Transient status messages take priority over note display
+	if m.statusMsg != "" {
+		return pad + styles.NoSessions.Render(m.statusMsg)
+	}
+	note := m.displayedSessionNote()
 	if note == "" {
-		if m.focused {
+		if m.focused && m.focusRow == 1 {
 			return pad + styles.NoSessions.Render("no note — N to add")
 		}
-		return pad + styles.NoSessions.Render("no note")
+		if !m.focused {
+			return pad + styles.NoSessions.Render("no note")
+		}
+		return pad
 	}
 	return pad + styles.HelpBar.Render(note)
 }

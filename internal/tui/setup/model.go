@@ -19,6 +19,7 @@ const (
 	stepWelcome step = iota
 	stepScanDir
 	stepWorktreeLocation
+	stepAgentCmd
 	stepDone
 )
 
@@ -31,6 +32,7 @@ type DoneMsg struct {
 type Model struct {
 	step             step
 	scanDirInput     textinput.Model
+	agentInput       textinput.Model
 	worktreeChoice   int // 0 = managed, 1 = adjacent
 	cfg              *config.Config
 	err              error
@@ -203,9 +205,16 @@ func New() Model {
 
 	ti.Focus()
 
+	ai := textinput.New()
+	ai.Placeholder = "claude, codex, gemini, etc."
+	ai.CharLimit = 256
+	ai.Width = 50
+	ai.SetValue("claude")
+
 	return Model{
 		step:         stepWelcome,
 		scanDirInput: ti,
+		agentInput:   ai,
 		cfg:          config.DefaultConfig(),
 	}
 }
@@ -255,6 +264,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cfg.Defaults.WorktreeLocation = "adjacent"
 				m.worktreeChoice = 1
 			case "enter":
+				m.step = stepAgentCmd
+				m.agentInput.Focus()
+				return m, textinput.Blink
+			case "ctrl+c":
+				return m, tea.Quit
+			}
+
+		case stepAgentCmd:
+			switch msg.String() {
+			case "enter":
+				agent := m.agentInput.Value()
+				if agent != "" {
+					m.cfg.Defaults.Agent = agent
+				}
 				// Save config
 				if err := config.Save(m.cfg); err != nil {
 					m.err = err
@@ -268,6 +291,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "ctrl+c":
 				return m, tea.Quit
+			default:
+				var cmd tea.Cmd
+				m.agentInput, cmd = m.agentInput.Update(msg)
+				return m, cmd
 			}
 
 		case stepDone:

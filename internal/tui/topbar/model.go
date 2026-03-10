@@ -57,6 +57,8 @@ type Model struct {
 	renameInput        textinput.Model
 	noteInput          textinput.Model
 	deleteTarget       string
+	renameTarget       string
+	noteTarget         string
 	activeSession      string
 	activeWindowIdx    int
 	statusMsg          string
@@ -131,6 +133,18 @@ func isSessionStale(s *session.Session) bool {
 	return err != nil
 }
 
+// selectedSessionName returns the selected session name when focused on the sessions row,
+// otherwise the active session name.
+func (m *Model) selectedSessionName() string {
+	if m.focused && m.focusRow == 1 {
+		sessions := m.activeRepoSessions()
+		if m.selectedSessionIdx < len(sessions) {
+			return sessions[m.selectedSessionIdx].Name
+		}
+	}
+	return m.activeSession
+}
+
 // activeRepoName returns the name of the currently active repo.
 func (m *Model) activeRepoName() string {
 	if len(m.repos) == 0 {
@@ -176,6 +190,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 
+	case tea.MouseMsg:
+		if msg.Action == tea.MouseActionPress && !m.focused {
+			m.focused = true
+			m.statusMsg = ""
+			sessions := m.activeRepoSessions()
+			if len(sessions) > 0 {
+				m.focusRow = 1
+				for i, s := range sessions {
+					if s.Name == m.activeSession {
+						m.selectedSessionIdx = i
+						break
+					}
+				}
+			} else {
+				m.focusRow = 0
+			}
+		}
+		return m, nil
+
+	case tea.BlurMsg:
+		if m.focused {
+			m.focused = false
+			m.focusRow = 0
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		// Handle modal input modes
 		if m.mode == modeRename {
@@ -217,14 +257,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// These work without focus mode (sent via `+Tab / `+r / `+0-9 prefix bindings)
-		switch {
-		case key == "tab":
-			return m.cycleSession()
-		case key == "r":
-			return m.cycleRepo(1)
-		case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
-			return m.jumpToSession(int(key[0]-'1'))
+		// These work without focus mode (sent via `+Tab / `+r / `+0-9 prefix bindings).
+		// In focus mode, these keys are not used — navigation uses arrow keys instead.
+		if !m.focused {
+			switch {
+			case key == "tab":
+				return m.cycleSession()
+			case key == "r":
+				return m.cycleRepo(1)
+			case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
+				return m.jumpToSession(int(key[0]-'1'))
+			}
 		}
 
 		// All other keys require focused mode
@@ -283,17 +326,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			repo := m.activeRepoName()
 			return m, func() tea.Msg { return SwitchToCreateMsg{PreselectedRepo: repo} }
 		case "m":
+			if m.focusRow == 0 {
+				m.statusMsg = "Select a session first"
+				return m, clearStatusAfter(2 * time.Second)
+			}
 			session := m.activeSession
 			if session == "" {
 				m.statusMsg = "No active session"
-				return m, nil
+				return m, clearStatusAfter(2 * time.Second)
 			}
 			return m, func() tea.Msg { return SwitchToMemoryMsg{SessionName: session} }
 		case "d":
+			if m.focusRow == 0 {
+				m.statusMsg = "Select a session first"
+				return m, clearStatusAfter(2 * time.Second)
+			}
 			return m.startDelete()
 		case "R":
+			if m.focusRow == 0 {
+				m.statusMsg = "Select a session first"
+				return m, clearStatusAfter(2 * time.Second)
+			}
 			return m.startRename()
 		case "N":
+			if m.focusRow == 0 {
+				m.statusMsg = "Select a session first"
+				return m, clearStatusAfter(2 * time.Second)
+			}
 			return m.startEditNote()
 		}
 	}
@@ -383,7 +442,7 @@ func (m Model) activateSession(s *session.Session) (tea.Model, tea.Cmd) {
 	}
 	if err := m.switchToSession(s); err != nil {
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
-		return m, nil
+		return m, clearStatusAfter(3 * time.Second)
 	}
 	m.focused = false
 	m.focusRow = 0
@@ -457,12 +516,13 @@ func (m *Model) switchToSession(s *session.Session) error {
 }
 
 func (m Model) startDelete() (tea.Model, tea.Cmd) {
-	if m.activeSession == "" {
-		m.statusMsg = "No active session to delete"
-		return m, nil
+	target := m.selectedSessionName()
+	if target == "" {
+		m.statusMsg = "No session to delete"
+		return m, clearStatusAfter(2 * time.Second)
 	}
 	m.mode = modeConfirmDelete
-	m.deleteTarget = m.activeSession
+	m.deleteTarget = target
 	return m, nil
 }
 
@@ -493,15 +553,23 @@ func (m Model) updateConfirmDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.refresh()
 
 		// Auto-activate another session so the screen isn't empty.
-		// Try current repo first, then any remaining session.
+		// Try current repo first, then any remaining session. Skip stale sessions.
 		nextSessions := m.activeRepoSessions()
 		if len(nextSessions) == 0 {
 			if all, lerr := session.List(); lerr == nil && len(all) > 0 {
 				nextSessions = append(nextSessions, all[0])
 			}
 		}
-		if len(nextSessions) > 0 {
-			m2, activateCmd := m.activateSession(nextSessions[0])
+		// Find the first non-stale session
+		var nextSession *session.Session
+		for _, ns := range nextSessions {
+			if !isSessionStale(ns) {
+				nextSession = ns
+				break
+			}
+		}
+		if nextSession != nil {
+			m2, activateCmd := m.activateSession(nextSession)
 			if tm, ok := m2.(Model); ok {
 				tm.statusMsg = fmt.Sprintf("Deleted '%s'", deletedName)
 				return tm, tea.Batch(activateCmd, clearStatusAfter(2*time.Second))
@@ -529,12 +597,14 @@ func (m Model) updateConfirmDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) startRename() (tea.Model, tea.Cmd) {
-	if m.activeSession == "" {
-		m.statusMsg = "No active session to rename"
-		return m, nil
+	target := m.selectedSessionName()
+	if target == "" {
+		m.statusMsg = "No session to rename"
+		return m, clearStatusAfter(2 * time.Second)
 	}
 	m.mode = modeRename
-	m.renameInput.SetValue(m.activeSession)
+	m.renameTarget = target
+	m.renameInput.SetValue(target)
 	m.renameInput.Focus()
 	return m, textinput.Blink
 }
@@ -542,7 +612,7 @@ func (m Model) startRename() (tea.Model, tea.Cmd) {
 func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
-		oldName := m.activeSession
+		oldName := m.renameTarget
 		newName := m.renameInput.Value()
 		if newName != "" && newName != oldName {
 			if err := session.Rename(oldName, newName); err != nil {
@@ -557,9 +627,11 @@ func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.mode = modeNormal
-		return m, nil
+		m.renameTarget = ""
+		return m, clearStatusAfter(2 * time.Second)
 	case "esc":
 		m.mode = modeNormal
+		m.renameTarget = ""
 		return m, nil
 	default:
 		var cmd tea.Cmd
@@ -569,13 +641,15 @@ func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) startEditNote() (tea.Model, tea.Cmd) {
-	if m.activeSession == "" {
-		m.statusMsg = "No active session"
-		return m, nil
+	target := m.selectedSessionName()
+	if target == "" {
+		m.statusMsg = "No session"
+		return m, clearStatusAfter(2 * time.Second)
 	}
 	m.mode = modeEditNote
+	m.noteTarget = target
 	// Pre-fill with existing note
-	s, err := session.Load(m.activeSession)
+	s, err := session.Load(target)
 	if err == nil {
 		m.noteInput.SetValue(s.Note)
 	} else {
@@ -589,16 +663,18 @@ func (m Model) updateEditNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		note := m.noteInput.Value()
-		s, err := session.Load(m.activeSession)
+		s, err := session.Load(m.noteTarget)
 		if err == nil {
 			s.Note = note
 			session.Save(s)
 		}
 		m.mode = modeNormal
+		m.noteTarget = ""
 		m.refresh()
 		return m, nil
 	case "esc":
 		m.mode = modeNormal
+		m.noteTarget = ""
 		return m, nil
 	default:
 		var cmd tea.Cmd
@@ -607,13 +683,19 @@ func (m Model) updateEditNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// activeSessionNote returns the note for the currently active session.
-func (m *Model) activeSessionNote() string {
-	if m.activeSession == "" {
+// displayedSessionNote returns the note for the session currently shown in the topbar.
+// In focus mode on the sessions row, this is the selected session; otherwise the active session.
+func (m *Model) displayedSessionNote() string {
+	// Don't show note when browsing repos
+	if m.focused && m.focusRow == 0 {
+		return ""
+	}
+	target := m.selectedSessionName()
+	if target == "" {
 		return ""
 	}
 	for _, s := range m.sessions {
-		if s.Name == m.activeSession {
+		if s.Name == target {
 			return s.Note
 		}
 	}

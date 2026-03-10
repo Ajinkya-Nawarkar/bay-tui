@@ -13,12 +13,16 @@ type capturedCmd struct {
 }
 
 func captureBindKeys() ([]capturedCmd, error) {
+	return captureBindKeysWithAgent("claude")
+}
+
+func captureBindKeysWithAgent(agentCmd string) ([]capturedCmd, error) {
 	var cmds []capturedCmd
 	runner := func(args ...string) (string, error) {
 		cmds = append(cmds, capturedCmd{args: args})
 		return "", nil
 	}
-	err := baytmux.BindKeysWithRunner(runner)
+	err := baytmux.BindKeysWithRunner(runner, agentCmd)
 	return cmds, err
 }
 
@@ -122,6 +126,20 @@ func TestBindKeysAgentSplit(t *testing.T) {
 	}
 	if !argsContain(c.args, "split-window") {
 		t.Error("agent split binding should use split-window")
+	}
+}
+
+func TestBindKeysCustomAgent(t *testing.T) {
+	cmds, _ := captureBindKeysWithAgent("codex")
+	c := findBindKey(cmds, "a")
+	if c == nil {
+		t.Fatal("no bind-key for 'a' found")
+	}
+	if !argsContain(c.args, "codex") {
+		t.Error("agent split binding should contain configured agent 'codex'")
+	}
+	if argsContain(c.args, "claude") {
+		t.Error("agent split binding should not contain 'claude' when configured with 'codex'")
 	}
 }
 

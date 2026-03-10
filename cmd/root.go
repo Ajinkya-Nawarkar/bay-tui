@@ -45,8 +45,12 @@ func Root(fresh bool) error {
 		return fmt.Errorf("creating bay session: %w", err)
 	}
 
-	// Set up tmux keybindings
-	baytmux.BindKeys()
+	// Set up tmux keybindings with configured agent command
+	agentCmd := "claude"
+	if cfg, err := config.Load(); err == nil && cfg.Defaults.Agent != "" {
+		agentCmd = cfg.Defaults.Agent
+	}
+	baytmux.BindKeys(agentCmd)
 
 	// If already inside tmux, switch client to bay session instead of attaching
 	if os.Getenv("TMUX") != "" {
@@ -95,7 +99,7 @@ func runTUI() error {
 	go memory.ProcessPendingSummaries()
 
 	app := tui.NewApp(cfg, firstRun)
-	p := tea.NewProgram(app, tea.WithAltScreen())
+	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus())
 	if _, err := p.Run(); err != nil {
 		return err
 	}
