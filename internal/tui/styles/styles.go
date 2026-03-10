@@ -55,6 +55,10 @@ var (
 			Foreground(Muted).
 			Italic(true)
 
+	// Note text (orange)
+	NoteText = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#F97316"))
+
 	// Help bar
 	HelpBar = lipgloss.NewStyle().
 		Foreground(Dim)

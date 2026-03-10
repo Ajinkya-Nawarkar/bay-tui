@@ -35,6 +35,10 @@ func (m Model) View() string {
 
 	row1 := styles.Title.Render("bay") + "   " + strings.Join(repoTabs, " \u2502 ")
 
+	if m.mode == modeSettings {
+		row1 = styles.Title.Render("bay") + "   " + styles.RepoTabActive.Render("⚙ Settings")
+	}
+
 	// Row 2: sessions for active repo (or status line during rename/delete)
 	row2 := m.renderSessionRow()
 
@@ -79,6 +83,9 @@ func (m Model) renderSessionRow() string {
 	}
 	if m.mode == modeRename {
 		return pad + "Rename: " + m.renameInput.View()
+	}
+	if m.mode == modeSettings {
+		return pad + styles.HelpBar.Render("Editing ~/.bay/config.yaml")
 	}
 
 	sessions := m.activeRepoSessions()
@@ -126,6 +133,9 @@ func (m Model) renderNoteRow() string {
 	if m.mode == modeEditNote {
 		return pad + "Note: " + m.noteInput.View()
 	}
+	if m.mode == modeSettings {
+		return pad + styles.HelpBar.Render("Save & close editor to return")
+	}
 	// Transient status messages take priority over note display
 	if m.statusMsg != "" {
 		return pad + styles.NoSessions.Render(m.statusMsg)
@@ -140,7 +150,7 @@ func (m Model) renderNoteRow() string {
 		}
 		return pad
 	}
-	return pad + styles.HelpBar.Render(note)
+	return pad + styles.NoteText.Render(note)
 }
 
 func (m Model) renderHintBarPlain() string {
@@ -156,6 +166,9 @@ func (m Model) renderHintBarPlain() string {
 	if m.mode == modeEditNote {
 		return tmuxHint("enter", "save") + gap + tmuxHint("esc", "cancel")
 	}
+	if m.mode == modeSettings {
+		return tmuxHint("editing", "close editor to return")
+	}
 
 	if m.focused {
 		return tmuxHint("←→", "navigate") + gap +
@@ -165,6 +178,7 @@ func (m Model) renderHintBarPlain() string {
 			tmuxHint("R", "rename") + gap +
 			tmuxHint("N", "note") + gap +
 			tmuxHint("m", "memory") + gap +
+			tmuxHint("S", "settings") + gap +
 			tmuxHint("q", "quit") + gap +
 			tmuxHint("esc", "exit")
 	}
@@ -177,7 +191,6 @@ func (m Model) renderHintBarPlain() string {
 		tmuxHint("`+a", "agent") + gap +
 		tmuxHint("`+d/D", "split") + gap +
 		tmuxHint("`+w", "close") + gap +
-		tmuxHint("`+s", "toggle") + gap +
 		tmuxHint("`+arrows", "nav") + gap +
 		tmuxHint("`+{/}", "swap")
 }

@@ -430,12 +430,6 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 		fmt.Sprintf("[ \"#{pane_id}\" != \"$(cat %s)\" ]", topbarIDFile),
 		fmt.Sprintf("run-shell 'tmux kill-pane && %s'", resizeTopbar))
 
-	// s to toggle focus between topbar and dev panes
-	run("bind-key", "-r", "s", "if-shell",
-		"[ #{pane_index} -eq 0 ]",
-		"select-pane -D",
-		"select-pane -t .0")
-
 	// Quick-access keybinds: send keys to topbar pane (pane 0 of current window)
 	// Use .0 to dynamically target pane index 0 in the active window.
 	// `+Space → focus topbar and toggle focused mode

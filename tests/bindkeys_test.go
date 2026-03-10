@@ -193,17 +193,6 @@ func TestBindKeysQuickAccessUsesDynamicTarget(t *testing.T) {
 	}
 }
 
-func TestBindKeysSToggleUsesDynamicTarget(t *testing.T) {
-	cmds, _ := captureBindKeys()
-	c := findBindKey(cmds, "s")
-	if c == nil {
-		t.Fatal("no bind-key for 's' found")
-	}
-	if !argsContain(c.args, ".0") {
-		t.Error("`+s binding should target .0 for topbar focus")
-	}
-}
-
 func TestBindKeysPrefixIsBacktick(t *testing.T) {
 	cmds, _ := captureBindKeys()
 	for _, c := range cmds {

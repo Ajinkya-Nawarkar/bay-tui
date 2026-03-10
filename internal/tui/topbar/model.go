@@ -23,6 +23,7 @@ const (
 	modeRename
 	modeConfirmDelete
 	modeEditNote
+	modeSettings
 )
 
 // SwitchToCreateMsg tells the app to switch to create screen.
@@ -61,6 +62,8 @@ type Model struct {
 	noteTarget         string
 	activeSession      string
 	activeWindowIdx    int
+	settingsWindowIdx  int
+	prevWindowIdx      int
 	statusMsg          string
 	err                error
 	width              int
@@ -227,6 +230,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeEditNote {
 			return m.updateEditNote(msg)
 		}
+		if m.mode == modeSettings {
+			return m.updateSettings(msg)
+		}
 
 		key := msg.String()
 
@@ -354,6 +360,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, clearStatusAfter(2 * time.Second)
 			}
 			return m.startEditNote()
+		case "S":
+			return m.startSettings()
 		}
 	}
 
@@ -730,6 +738,83 @@ func (m *Model) ActivateSession(name string) {
 	}
 
 	m.refresh()
+}
+
+func (m Model) startSettings() (tea.Model, tea.Cmd) {
+	m.prevWindowIdx = m.activeWindowIdx
+
+	newWindowIdx, err := baytmux.CreateSessionWindow(config.BayDir())
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(3 * time.Second)
+	}
+
+	if err := baytmux.MoveTopbarToWindow(newWindowIdx); err != nil {
+		baytmux.KillWindow(newWindowIdx)
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(3 * time.Second)
+	}
+
+	if err := baytmux.SwitchToWindow(newWindowIdx); err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(3 * time.Second)
+	}
+
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+	topbarTarget := baytmux.TopbarPaneTarget()
+	cmd := fmt.Sprintf("%s %s; tmux select-pane -t %s; tmux send-keys -t %s s; exit",
+		editor, config.ConfigPath(), topbarTarget, topbarTarget)
+	baytmux.SendToDevPane(newWindowIdx, cmd)
+
+	m.mode = modeSettings
+	m.settingsWindowIdx = newWindowIdx
+	m.focused = false
+
+	windowIdx := newWindowIdx
+	return m, func() tea.Msg {
+		baytmux.FocusDevPane(windowIdx)
+		return tea.ClearScreen()
+	}
+}
+
+func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() != "s" {
+		return m, nil
+	}
+
+	// Trigger from chained shell command — editor has closed
+	m.mode = modeNormal
+
+	// Break topbar out before killing the settings window
+	baytmux.BreakTopbarToOwnWindow()
+	baytmux.KillWindow(m.settingsWindowIdx)
+
+	// Move topbar back to original session window
+	if m.prevWindowIdx > 0 && baytmux.WindowExists(m.prevWindowIdx) {
+		baytmux.MoveTopbarToWindow(m.prevWindowIdx)
+		baytmux.SwitchToWindow(m.prevWindowIdx)
+	}
+
+	// Reload config and rebind keys
+	if cfg, err := config.Load(); err == nil {
+		m.cfg = cfg
+		baytmux.BindKeys(cfg.Defaults.Agent)
+	}
+	m.refresh()
+	m.statusMsg = "Settings reloaded"
+	m.focused = true
+
+	windowIdx := m.prevWindowIdx
+	return m, tea.Batch(
+		func() tea.Msg {
+			baytmux.FocusDevPane(windowIdx)
+			return tea.ClearScreen()
+		},
+		clearStatusAfter(2*time.Second),
+	)
 }
 
 // IsFocused returns whether the topbar is in focused mode.
