@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"bay/internal/config"
 	"bay/internal/session"
@@ -70,11 +71,13 @@ func GenerateNavigator() error {
 	b.WriteString("Manage with: `bay context ls|add|rm|toggle`\n")
 
 	b.WriteString("\n## Project Context\n\n")
-	b.WriteString("Project-specific context lives in `~/.bay/context/projects/<project-name>/`.\n")
-	b.WriteString("Use this directory to store persistent project knowledge that agents need\n")
-	b.WriteString("across sessions — architecture docs, status, design decisions, conventions.\n\n")
-	b.WriteString("Structure: `~/.bay/context/projects/<project>/` with markdown files.\n")
-	b.WriteString("Example: `~/.bay/context/projects/myapp/architecture.md`\n")
+	b.WriteString("Project-specific context lives in `~/.bay/context/projects/<project-name>/`.\n\n")
+	b.WriteString("Key file: `status.md` — current project state, milestones, what's shipped, known issues.\n")
+	b.WriteString("Read `status.md` at the start of work. Update it when you complete significant changes.\n")
+	b.WriteString("Updates section is **append-only with date headings** (`### YYYY-MM-DD — description`).\n\n")
+	b.WriteString("Other useful files: `architecture.md`, `design.md`, conventions, etc.\n\n")
+	b.WriteString("Session-level progress goes to `bay mem task` / `bay mem note` (ephemeral).\n")
+	b.WriteString("Project-level progress goes to `status.md` (persistent across all sessions).\n")
 
 	return os.WriteFile(navigatorPath, []byte(b.String()), 0644)
 }
@@ -129,6 +132,36 @@ func GenerateAllIndexes() error {
 	}
 
 	return nil
+}
+
+// EnsureProjectContext creates ~/.bay/context/projects/<repo>/status.md with a
+// template if the file doesn't already exist. Called on session creation so every
+// project gets a properly formatted status file from the start.
+func EnsureProjectContext(repoName string) {
+	if repoName == "" {
+		return
+	}
+	projectDir := filepath.Join(config.ContextProjectsDir(), repoName)
+	os.MkdirAll(projectDir, 0755)
+
+	statusPath := filepath.Join(projectDir, "status.md")
+	if _, err := os.Stat(statusPath); err == nil {
+		return // already exists
+	}
+
+	template := fmt.Sprintf(`# %s — Project Status
+
+## What's Built
+
+(Describe the current state of the project here)
+
+## Updates
+
+### %s — initial setup
+- Project context created by bay
+`, repoName, time.Now().Format("2006-01-02"))
+
+	os.WriteFile(statusPath, []byte(template), 0644)
 }
 
 // CleanupWorktreeRules removes .claude/rules/bay/ from all worktree sessions.

@@ -61,11 +61,39 @@ most prominent piece of context — always keep them current.
 Resources are organized in ` + "`~/.bay/{type}/`" + ` directories (rules, skills, agents, plugins).
 Each directory has an ` + "`index.yaml`" + ` catalog. Read ` + "`~/.bay/CLAUDE.md`" + ` for the full directory listing.
 
-## Project Context
+## Where to Write Progress
 
-Store project-specific knowledge in ` + "`~/.bay/context/projects/<project-name>/`" + `.
-This is the right place for architecture docs, design decisions, status, and conventions
-that should persist across sessions and be available to all agents working on the project.
+There are two levels of progress tracking:
+
+- **Session progress** → ` + "`bay mem task`" + `, ` + "`bay mem note`" + `
+  Use for what you're doing right now in this session. Captured automatically on session
+  switch and injected when new agents start. Ephemeral — scoped to the session lifecycle.
+
+- **Project progress** → ` + "`~/.bay/context/projects/<project-name>/status.md`" + `
+  Use for milestones, what's shipped, what's in progress, known issues, and current state
+  of the project. Persists across all sessions. Update this when completing significant
+  work so future agents (in any session) have an accurate picture of the project.
+
+Read the project's ` + "`status.md`" + ` at the start of work to understand current state.
+Update it when you complete meaningful changes.
+
+### status.md format
+
+` + "`status.md`" + ` uses **timestamped, append-style updates**. Do NOT overwrite previous entries.
+Add new updates at the top of the ` + "`## Updates`" + ` section with a date heading:
+
+` + "```" + `
+## Updates
+
+### YYYY-MM-DD — short description
+- what changed
+- what shipped
+
+### (previous entries stay below)
+` + "```" + `
+
+The top sections (What's Built, CLI Commands, etc.) can be edited to reflect current state,
+but the Updates section is append-only — it is the project changelog.
 `
 
 // ContextFilesDir returns the path to ~/.bay/rules/
