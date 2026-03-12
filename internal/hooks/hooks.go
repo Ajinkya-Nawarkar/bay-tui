@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"sync"
 	"time"
 
 	"bay/internal/config"
@@ -9,6 +10,53 @@ import (
 	"bay/internal/session"
 	baytmux "bay/internal/tmux"
 )
+
+// Debounce state: prevents rapid duplicate captures for the same session.
+var (
+	lastCaptureMu   sync.Mutex
+	lastCaptureTime = make(map[string]time.Time)
+)
+
+// debounceDuration is how long to wait before allowing another capture for the same session.
+const debounceDuration = 5 * time.Second
+
+// ShouldCapture returns true if enough time has passed since the last capture for this session.
+// Updates the timestamp on success.
+func ShouldCapture(sessionName string) bool {
+	lastCaptureMu.Lock()
+	defer lastCaptureMu.Unlock()
+
+	now := time.Now()
+	if last, ok := lastCaptureTime[sessionName]; ok {
+		if now.Sub(last) < debounceDuration {
+			return false
+		}
+	}
+	lastCaptureTime[sessionName] = now
+	return true
+}
+
+// ShouldCaptureWithDuration is like ShouldCapture but accepts a custom duration (for testing).
+func ShouldCaptureWithDuration(sessionName string, dur time.Duration) bool {
+	lastCaptureMu.Lock()
+	defer lastCaptureMu.Unlock()
+
+	now := time.Now()
+	if last, ok := lastCaptureTime[sessionName]; ok {
+		if now.Sub(last) < dur {
+			return false
+		}
+	}
+	lastCaptureTime[sessionName] = now
+	return true
+}
+
+// ResetDebounce clears debounce state (for testing).
+func ResetDebounce() {
+	lastCaptureMu.Lock()
+	defer lastCaptureMu.Unlock()
+	lastCaptureTime = make(map[string]time.Time)
+}
 
 // loadConfig loads config with defaults fallback.
 func loadConfig() *config.Config {
@@ -82,7 +130,9 @@ func OnSessionActivate(sessionName, repoName, workingDir string) error {
 	return nil
 }
 
-// OnSessionDeactivate captures all dev pane buffers, queues summaries, syncs pane layout, and logs event.
+// OnSessionDeactivate syncs pane layout and logs the deactivation event.
+// Agent panes are resumed via claude session IDs on cold boot, so no buffer
+// capture or LLM summarization is needed on session switch.
 func OnSessionDeactivate(sessionName, repoPath string, windowIdx int) error {
 	cfg := loadConfig()
 	if !cfg.Memory.Enabled {
@@ -93,30 +143,14 @@ func OnSessionDeactivate(sessionName, repoPath string, windowIdx int) error {
 		memory.AppendEpisodic(sessionName, "deactivate", "session deactivated", "")
 	}
 
-	// Sync pane layout to session YAML
+	// Sync pane layout (including claude session IDs) to session YAML
 	SyncPaneLayout(sessionName, windowIdx)
-
-	if !cfg.Memory.AutoSummarize {
-		return nil
-	}
-
-	// Capture all dev pane buffers
-	buffers, err := baytmux.CaptureAllDevPanes(windowIdx, 100)
-	if err != nil {
-		return nil // Non-fatal: panes may already be gone
-	}
-
-	// Queue each buffer for async summarization
-	for paneID, buffer := range buffers {
-		if len(buffer) > 0 {
-			memory.SummarizeAsync(sessionName, buffer, paneID)
-		}
-	}
 
 	return nil
 }
 
 // SyncPaneLayout snapshots the current tmux pane layout and persists it to session YAML.
+// Preserves AgentSessionID from existing YAML data (tmux doesn't know about it).
 func SyncPaneLayout(sessionName string, windowIdx int) {
 	s, err := session.Load(sessionName)
 	if err != nil {
@@ -126,6 +160,14 @@ func SyncPaneLayout(sessionName string, windowIdx int) {
 	panes, err := baytmux.SnapshotPaneLayout(windowIdx)
 	if err != nil {
 		return
+	}
+
+	// Build a lookup of existing claude session IDs by tmux pane ID
+	existingIDs := make(map[string]string)
+	for _, p := range s.Panes {
+		if p.PaneID != "" && p.AgentSessionID != "" {
+			existingIDs[p.PaneID] = p.AgentSessionID
+		}
 	}
 
 	var sessionPanes []session.Pane
@@ -141,6 +183,11 @@ func SyncPaneLayout(sessionName string, windowIdx int) {
 			Command: p.Command,
 			PaneID:  p.PaneID,
 			Title:   p.Title,
+		}
+
+		// Preserve claude session ID from existing YAML data
+		if id, ok := existingIDs[p.PaneID]; ok {
+			sp.AgentSessionID = id
 		}
 
 		sessionPanes = append(sessionPanes, sp)

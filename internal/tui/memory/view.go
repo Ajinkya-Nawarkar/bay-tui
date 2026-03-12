@@ -16,7 +16,7 @@ func (m Model) View() string {
 
 	var b strings.Builder
 
-	title := styles.Title.Render("bay memory") + "   " +
+	title := styles.Title.Render("bay ctx") + "   " +
 		styles.Subtitle.Render(m.sessionName)
 	b.WriteString(title + "\n")
 

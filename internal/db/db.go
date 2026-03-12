@@ -55,12 +55,13 @@ func migrate(db *sql.DB) error {
 	stmts := []string{
 		// Episodic Memory: raw event log
 		`CREATE TABLE IF NOT EXISTS episodic (
-			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			session_id  TEXT NOT NULL,
-			type        TEXT NOT NULL,
-			content     TEXT NOT NULL,
-			pane_id     TEXT,
-			timestamp   DATETIME DEFAULT CURRENT_TIMESTAMP
+			id               INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id       TEXT NOT NULL,
+			type             TEXT NOT NULL,
+			content          TEXT NOT NULL,
+			pane_id          TEXT,
+			agent_session_id TEXT,
+			timestamp        DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 
 		// FTS5 virtual table for full-text search over episodic content
@@ -74,15 +75,15 @@ func migrate(db *sql.DB) error {
 
 		// Working Memory: live session state
 		`CREATE TABLE IF NOT EXISTS working_state (
-			session_id        TEXT PRIMARY KEY,
-			repo              TEXT NOT NULL,
-			worktree_path     TEXT,
-			git_branch        TEXT,
-			claude_session_id TEXT,
-			current_task      TEXT,
-			last_summary      TEXT,
-			active_since      DATETIME,
-			last_updated      DATETIME DEFAULT CURRENT_TIMESTAMP
+			session_id       TEXT PRIMARY KEY,
+			repo             TEXT NOT NULL,
+			worktree_path    TEXT,
+			git_branch       TEXT,
+			agent_session_id TEXT,
+			current_task     TEXT,
+			last_summary     TEXT,
+			active_since     DATETIME,
+			last_updated     DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 
 		// Procedural Memory: context files (rules, docs, standards, etc.)
@@ -99,8 +100,23 @@ func migrate(db *sql.DB) error {
 			id          INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id  TEXT NOT NULL,
 			raw_buffer  TEXT NOT NULL,
+			retry_count INTEGER DEFAULT 0,
 			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
+
+		// Tasks: hierarchical task tracking per session
+		`CREATE TABLE IF NOT EXISTS tasks (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id   TEXT NOT NULL,
+			title        TEXT NOT NULL,
+			status       TEXT DEFAULT 'todo',
+			parent_id    INTEGER,
+			sort_order   INTEGER DEFAULT 0,
+			created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+			completed_at DATETIME
+		)`,
+
+		`CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id)`,
 	}
 
 	for _, s := range stmts {
@@ -133,13 +149,6 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
-
-	// Add claude_session_id column to episodic (try-and-ignore for existing DBs)
-	db.Exec(`ALTER TABLE episodic ADD COLUMN claude_session_id TEXT`)
-
-	// Migrate rules → context_files (try-and-ignore for new installs where rules doesn't exist)
-	db.Exec(`ALTER TABLE rules RENAME TO context_files`)
-	db.Exec(`ALTER TABLE context_files ADD COLUMN category TEXT DEFAULT 'rules'`)
 
 	return nil
 }

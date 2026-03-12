@@ -415,11 +415,11 @@ func bindKeysImpl(run RunnerFunc) error {
 	run("bind-key", "-r", "D", "run-shell",
 		fmt.Sprintf("tmux split-window -v -c '#{pane_current_path}' && %s", resizeTopbar))
 
-	// a for agent split — vertical split running claude in same dir
-	// Uses bash -c so Claude Code's SessionStart hook (bay context) fires correctly.
-	// Auto-labels the pane "claude" so the border shows it.
+	// a for agent split — vertical split running bay agent wrapper
+	// bay agent generates a UUID, saves it to session YAML, then execs the configured agent.
+	// Auto-labels the pane "agent" so the border shows it.
 	run("bind-key", "-r", "a", "run-shell",
-		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' 'bash -c \"claude\"' && tmux select-pane -T claude && %s", resizeTopbar))
+		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' 'bash -c \"bay agent\"' && tmux select-pane -T agent && %s", resizeTopbar))
 
 	// w to close pane — guard by comparing pane_id against topbar's persisted ID.
 	run("bind-key", "-r", "w", "if-shell",
@@ -462,7 +462,7 @@ func bindKeysImpl(run RunnerFunc) error {
 
 	// Memory hooks: capture pane buffer on pane exit for episodic recording
 	run("set-hook", "-g", "pane-exited",
-		"run-shell 'bay mem capture #{pane_id} &'")
+		"run-shell 'bay ctx capture #{pane_id} &'")
 
 	return nil
 }
@@ -498,10 +498,13 @@ func CapturePaneBuffer(paneID string, lines int) (string, error) {
 	return out, nil
 }
 
-// CaptureAllDevPanes captures all non-topbar pane buffers in a window.
+// CaptureAllDevPanes captures all non-topbar, non-agent pane buffers in a window.
+// Agent panes (running claude) are skipped since they produce garbage captures.
 func CaptureAllDevPanes(windowIndex, lines int) (map[string]string, error) {
-	// List all panes in the window
-	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex), "-F", "#{pane_id}")
+	// List all panes with their start command to filter agents
+	sep := "%%BAYCAP%%"
+	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex),
+		"-F", fmt.Sprintf("#{pane_id}%s#{pane_start_command}", sep))
 	if err != nil {
 		return nil, fmt.Errorf("list-panes: %w", err)
 	}
@@ -510,10 +513,26 @@ func CaptureAllDevPanes(windowIndex, lines int) (map[string]string, error) {
 	result := make(map[string]string)
 
 	for _, line := range strings.Split(out, "\n") {
-		paneID := strings.TrimSpace(line)
-		if paneID == "" || paneID == topbarID {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
+
+		parts := strings.SplitN(line, sep, 2)
+		paneID := parts[0]
+		startCmd := ""
+		if len(parts) > 1 {
+			startCmd = parts[1]
+		}
+
+		// Skip topbar and agent panes
+		if paneID == topbarID {
+			continue
+		}
+		if strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude") {
+			continue
+		}
+
 		buffer, err := CapturePaneBuffer(paneID, lines)
 		if err != nil {
 			continue
@@ -567,8 +586,8 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 			continue
 		}
 
-		// Detect agent panes by checking if the start command contains "claude"
-		isAgent := strings.Contains(startCmd, "claude")
+		// Detect agent panes by checking if the start command contains "bay agent" or "claude"
+		isAgent := strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude")
 		panes = append(panes, PaneInfo{
 			PaneID:  paneID,
 			Command: startCmd,
@@ -591,7 +610,8 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 		if i == 0 {
 			// First pane already exists — launch agent if needed, set title
 			if p.Type == "agent" {
-				run("send-keys", "-t", firstPane, "claude", "Enter")
+				agentCmd := agentLaunchCmd(p.AgentSessionID)
+				run("send-keys", "-t", firstPane, agentCmd, "Enter")
 			}
 			if p.Title != "" {
 				run("select-pane", "-t", firstPane, "-T", p.Title)
@@ -608,7 +628,7 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 
 		var command string
 		if p.Type == "agent" {
-			command = "bash -c \"claude\""
+			command = fmt.Sprintf("bash -c \"%s\"", agentLaunchCmd(p.AgentSessionID))
 		}
 
 		args := []string{"split-window", "-h", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex), "-c", dir}
@@ -635,10 +655,20 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 // SessionPane is a minimal pane description used for recreation.
 // This mirrors session.Pane but avoids the import cycle.
 type SessionPane struct {
-	Type    string
-	Cwd     string
-	Command string
-	Title   string
+	Type            string
+	Cwd             string
+	Command         string
+	Title           string
+	AgentSessionID string
+}
+
+// agentLaunchCmd returns the shell command to launch an agent pane.
+// If a Claude session ID exists, resumes it; otherwise starts fresh.
+func agentLaunchCmd(agentSessionID string) string {
+	if agentSessionID != "" {
+		return fmt.Sprintf("bay agent --resume %s", agentSessionID)
+	}
+	return "bay agent"
 }
 
 // hintsFile returns the path where topbar hints are written for tmux status bar.

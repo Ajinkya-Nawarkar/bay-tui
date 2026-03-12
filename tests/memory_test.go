@@ -326,75 +326,242 @@ func TestRecentSummariesLimit(t *testing.T) {
 	}
 }
 
-func TestContextFiltersPaneSnapshotsAndSummaries(t *testing.T) {
+func TestSlimContext(t *testing.T) {
 	d, err := db.OpenPath(":memory:")
 	if err != nil {
 		t.Fatalf("OpenPath failed: %v", err)
 	}
 	defer d.Close()
 
-	// Create working state
-	w := &memory.WorkingState{SessionID: "s1", Repo: "myrepo"}
+	// Create working state with summary
+	w := &memory.WorkingState{
+		SessionID:   "s1",
+		Repo:        "myrepo",
+		LastSummary: "Set up middleware and wrote tests.",
+	}
 	memory.UpsertWorkingDB(d, w)
 
-	// Add various episodic entries
-	memory.AppendEpisodicDB(d, "s1", "activate", "session activated", "")
-	memory.AppendEpisodicDB(d, "s1", "pane_snapshot", "long buffer content...", "%1")
-	memory.AppendEpisodicDB(d, "s1", "summary", "Fixed auth bug", "")
-	memory.AppendEpisodicDB(d, "s1", "cmd", "go test ./...", "%1")
-	memory.AppendEpisodicDB(d, "s1", "deactivate", "session deactivated", "")
+	// Create a task in the tasks table
+	memory.CreateTaskDB(d, "s1", "implement auth", nil)
 
-	ctx, err := memory.RenderContextDB(d, "s1")
+	// Add episodic entries that should NOT appear in slim context
+	memory.AppendEpisodicDB(d, "s1", "activate", "session activated", "")
+	memory.AppendEpisodicDB(d, "s1", "cmd", "go test ./...", "%1")
+	memory.AppendEpisodicDB(d, "s1", "summary", "First summary", "")
+	memory.AppendEpisodicDB(d, "s1", "summary", "Second summary", "")
+
+	ctx, err := memory.RenderContextDB(d, "s1", "working on auth feature", 0)
 	if err != nil {
 		t.Fatalf("RenderContextDB failed: %v", err)
 	}
 
-	// pane_snapshot and summary should NOT appear in Recent Activity
-	if strings.Contains(ctx, "long buffer content") {
-		t.Error("pane_snapshot content should be filtered from Recent Activity")
+	// Should contain: header, tasks, summary, note
+	if !strings.Contains(ctx, "Session: s1") {
+		t.Error("expected session name in header")
+	}
+	if !strings.Contains(ctx, "Repo: myrepo") {
+		t.Error("expected repo in header")
+	}
+	if !strings.Contains(ctx, "implement auth") {
+		t.Error("expected task in context")
+	}
+	if !strings.Contains(ctx, "## Tasks") {
+		t.Error("expected Tasks section in context")
+	}
+	if !strings.Contains(ctx, "Set up middleware") {
+		t.Error("expected summary in context")
+	}
+	if !strings.Contains(ctx, "## Session Note") {
+		t.Error("expected session note section")
+	}
+	if !strings.Contains(ctx, "working on auth feature") {
+		t.Error("expected note content")
 	}
 
-	// activate and cmd should appear
-	if !strings.Contains(ctx, "session activated") {
-		t.Error("activate entry should appear in Recent Activity")
+	// Should NOT contain: history, activity, branch, timestamps
+	if strings.Contains(ctx, "## Session History") {
+		t.Error("slim context should not contain Session History")
 	}
-	if !strings.Contains(ctx, "go test") {
-		t.Error("cmd entry should appear in Recent Activity")
+	if strings.Contains(ctx, "## Recent Activity") {
+		t.Error("slim context should not contain Recent Activity")
+	}
+	if strings.Contains(ctx, "Branch:") {
+		t.Error("slim context should not contain Branch")
+	}
+	if strings.Contains(ctx, "Last active:") {
+		t.Error("slim context should not contain Last active timestamp")
 	}
 }
 
-func TestSessionHistoryRendering(t *testing.T) {
+func TestSlimContextNoNote(t *testing.T) {
 	d, err := db.OpenPath(":memory:")
 	if err != nil {
 		t.Fatalf("OpenPath failed: %v", err)
 	}
 	defer d.Close()
 
-	// Create working state
-	w := &memory.WorkingState{SessionID: "s1", Repo: "myrepo"}
+	w := &memory.WorkingState{
+		SessionID: "s1",
+		Repo:      "myrepo",
+	}
 	memory.UpsertWorkingDB(d, w)
 
-	// Add multiple summaries
-	memory.AppendEpisodicDB(d, "s1", "summary", "First summary", "")
-	memory.AppendEpisodicDB(d, "s1", "summary", "Second summary", "")
-	memory.AppendEpisodicDB(d, "s1", "summary", "Third summary (most recent)", "")
+	// Create a task in the tasks table
+	memory.CreateTaskDB(d, "s1", "fix bug", nil)
 
-	ctx, err := memory.RenderContextDB(d, "s1")
+	ctx, err := memory.RenderContextDB(d, "s1", "", 0)
 	if err != nil {
 		t.Fatalf("RenderContextDB failed: %v", err)
 	}
 
-	// Session History section should exist (>1 summary)
-	if !strings.Contains(ctx, "## Session History") {
-		t.Error("expected Session History section")
+	// Should NOT contain note section when note is empty
+	if strings.Contains(ctx, "## Session Note") {
+		t.Error("note section should be omitted when empty")
 	}
 
-	// Most recent summary is skipped (same as last_summary)
-	// "First summary" and "Second summary" should appear
-	if !strings.Contains(ctx, "First summary") {
-		t.Error("expected First summary in Session History")
+	// Should still contain task
+	if !strings.Contains(ctx, "fix bug") {
+		t.Error("expected task in context")
 	}
-	if !strings.Contains(ctx, "Second summary") {
-		t.Error("expected Second summary in Session History")
+}
+
+func TestIsNonTrivialBuffer(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect bool
+	}{
+		{"empty string", "", false},
+		{"whitespace only", "   \n\n  \n   ", false},
+		{"shell prompts only", "➜ tests git:(tests)\n$ \n% \n", false},
+		{"prompts with one command", "➜ tests git:(tests) ls\nfile1.go\n", false},
+		{"real terminal output", "➜ tests git:(tests) go test ./...\nok  bay/tests 0.5s\n--- PASS: TestFoo\nPASS\ncoverage: 80%\n", true},
+		{"multiple meaningful lines", "line one\nline two\nline three\n", true},
+		{"bare prompts mixed", "$ \n% \n> \nhello world\ngoodbye\nfoo bar\n", true},
+		{"only trivial commands", "clear\nexit\n\n", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := memory.IsNonTrivialBuffer(tt.input)
+			if got != tt.expect {
+				t.Errorf("IsNonTrivialBuffer(%q) = %v, want %v", tt.input, got, tt.expect)
+			}
+		})
+	}
+}
+
+func TestIsLowValueSummary(t *testing.T) {
+	// Test via ShouldUpdateSummary since isLowValueSummary is unexported
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	// No existing session — low-value summary should still be accepted (something > nothing)
+	if !memory.ShouldUpdateSummary(d, "nonexistent", "No work was performed during this session.") {
+		t.Error("expected low-value summary accepted when no existing state")
+	}
+
+	// Create session with a good summary
+	w := &memory.WorkingState{SessionID: "s1", Repo: "bay", LastSummary: "Fixed auth middleware and ran tests."}
+	memory.UpsertWorkingDB(d, w)
+
+	// Low-value summary should NOT overwrite good summary
+	if memory.ShouldUpdateSummary(d, "s1", "No work was performed during this session.") {
+		t.Error("expected low-value summary rejected when good summary exists")
+	}
+	if memory.ShouldUpdateSummary(d, "s1", "no meaningful activity was observed") {
+		t.Error("expected 'no meaningful activity' rejected")
+	}
+	if memory.ShouldUpdateSummary(d, "s1", "The session was idle.") {
+		t.Error("expected 'idle' summary rejected")
+	}
+
+	// Substantive summary should overwrite
+	if !memory.ShouldUpdateSummary(d, "s1", "The user modified auth.go and ran tests.") {
+		t.Error("expected substantive summary accepted")
+	}
+
+	// Empty existing summary — low-value should be accepted
+	w2 := &memory.WorkingState{SessionID: "s2", Repo: "bay"}
+	memory.UpsertWorkingDB(d, w2)
+
+	if !memory.ShouldUpdateSummary(d, "s2", "No work was performed.") {
+		t.Error("expected low-value summary accepted when existing summary is empty")
+	}
+}
+
+func TestCleanStalePendingSummaries(t *testing.T) {
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	// Insert a fresh row
+	d.Exec(`INSERT INTO pending_summaries (session_id, raw_buffer, retry_count) VALUES (?, ?, ?)`,
+		"fresh", "buffer1", 0)
+
+	// Insert a row with exhausted retries
+	d.Exec(`INSERT INTO pending_summaries (session_id, raw_buffer, retry_count) VALUES (?, ?, ?)`,
+		"retried", "buffer2", 3)
+
+	// Insert an old row (simulate by setting created_at in the past)
+	d.Exec(`INSERT INTO pending_summaries (session_id, raw_buffer, retry_count, created_at) VALUES (?, ?, ?, datetime('now', '-2 hours'))`,
+		"old", "buffer3", 0)
+
+	// Run cleanup
+	memory.CleanStalePendingSummariesDB(d)
+
+	// Check counts
+	var count int
+	d.QueryRow(`SELECT COUNT(*) FROM pending_summaries WHERE session_id = 'fresh'`).Scan(&count)
+	if count != 1 {
+		t.Errorf("expected fresh row preserved, got count %d", count)
+	}
+
+	d.QueryRow(`SELECT COUNT(*) FROM pending_summaries WHERE session_id = 'retried'`).Scan(&count)
+	if count != 0 {
+		t.Errorf("expected retried row deleted, got count %d", count)
+	}
+
+	d.QueryRow(`SELECT COUNT(*) FROM pending_summaries WHERE session_id = 'old'`).Scan(&count)
+	if count != 0 {
+		t.Errorf("expected old row deleted, got count %d", count)
+	}
+}
+
+func TestSlimContextMinimal(t *testing.T) {
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	// Working state with no task, no summary
+	w := &memory.WorkingState{SessionID: "s1", Repo: "myrepo"}
+	memory.UpsertWorkingDB(d, w)
+
+	ctx, err := memory.RenderContextDB(d, "s1", "", 0)
+	if err != nil {
+		t.Fatalf("RenderContextDB failed: %v", err)
+	}
+
+	// Should just have the header
+	if !strings.Contains(ctx, "# Bay Session Context") {
+		t.Error("expected header")
+	}
+	if !strings.Contains(ctx, "Repo: myrepo") {
+		t.Error("expected repo in header")
+	}
+
+	// Should NOT have any optional sections
+	if strings.Contains(ctx, "## Where You Left Off") {
+		t.Error("task section should be absent when no task set")
+	}
+	if strings.Contains(ctx, "## Last Summary") {
+		t.Error("summary section should be absent when no summary")
 	}
 }

@@ -15,23 +15,45 @@ const bayCLIRuleName = "bay-cli"
 const bayCLIRuleContent = `# Bay Session Manager
 
 You are running inside a bay-managed session. Bay tracks your work across sessions
-and provides persistent memory.
+and provides persistent memory that is automatically injected when you start.
 
-## Available Commands
+## Commands
 
-- ` + "`bay mem task \"description\"`" + ` — set the current task (persists across agent restarts)
-- ` + "`bay mem note \"text\"`" + ` — log a note to session history
-- ` + "`bay mem show`" + ` — view current session state (task, summary, repo, branch)
-- ` + "`bay search \"query\"`" + ` — full-text search across session history
-- ` + "`bay context add <name> <path>`" + ` — register a context file
-- ` + "`bay context rm <name>`" + ` — remove a context file
-- ` + "`bay context ls`" + ` — list all context files
+### Tasks — structured task tracking per session
+
+- ` + "`bay task \"description\"`" + ` — create a task. Tasks persist across agent restarts
+  and appear in every new agent's context. Always create tasks when starting work.
+- ` + "`bay task add \"desc\" [-p N]`" + ` — add a subtask, optionally under task #N.
+- ` + "`bay task ls`" + ` — list all tasks with status.
+- ` + "`bay task done <id>`" + ` / ` + "`bay task doing <id>`" + ` — update task status.
+- ` + "`bay task assign <id>`" + ` — assign the current pane to a task. The context
+  will show which task this agent is responsible for.
+
+### Working State — session context and notes
+
+- ` + "`bay ctx note \"text\"`" + ` — log a note to session history. Use for breadcrumbs:
+  decisions made, dead ends hit, things the next agent should know.
+- ` + "`bay ctx show`" + ` — view current session state (tasks, summary, repo, branch).
+  Run this when you need to understand what was happening before you started.
+
+### Search & History — find past work across all sessions
+
+- ` + "`bay ctx search \"query\"`" + ` — full-text search across all session history.
+  Finds terminal output, notes, and summaries from any session.
+- ` + "`bay ctx history [-n 50]`" + ` — show the episodic log for this session.
+
+### Context Files — documents injected into every agent in a session
+
+- ` + "`bay ctx files`" + ` — list all registered context files and their status.
+- ` + "`bay ctx add <name> <path>`" + ` — register a file for injection (design docs,
+  API specs, coding standards). Use --scope repo:<name> to limit to one repo.
+- ` + "`bay ctx rm <name>`" + ` — remove a registered context file.
 
 ## How Memory Works
 
-Bay automatically captures your work when sessions switch. Summaries are generated
-and injected when new agents start. Use ` + "`bay mem task`" + ` to set what you're working on
-so future agents know the goal.
+Bay captures pane output when sessions switch. Summaries are generated and injected
+into your context automatically on startup. Tasks created with ` + "`bay task`" + ` are the
+most prominent piece of context — always keep them current.
 `
 
 // ContextFilesDir returns the path to ~/.bay/rules/

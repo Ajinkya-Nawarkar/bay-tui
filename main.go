@@ -38,18 +38,26 @@ func main() {
 			os.Exit(1)
 		}
 
-	case "ls", "list":
-		if err := cmd.Ls(); err != nil {
+	case "ctx", "context", "rules":
+		if err := cmd.Ctx(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 
-	case "kill":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "Usage: bay kill <session-name>")
+	case "session":
+		if err := cmd.SessionCmd(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if err := cmd.Kill(args[1]); err != nil {
+
+	case "task":
+		if err := cmd.Task(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "agent":
+		if err := cmd.Agent(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -66,38 +74,20 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "upgrade":
+		if err := cmd.Upgrade(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
 	case "uninstall":
 		if err := cmd.Uninstall(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 
-	case "mem":
-		if err := cmd.Mem(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-
-	case "search":
-		if err := cmd.Search(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-
-	case "context", "rules":
-		if err := cmd.ContextCmd(args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-
 	case "sync-panes":
 		if err := cmd.SyncPanes(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-
-	case "upgrade":
-		if err := cmd.Upgrade(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -113,48 +103,64 @@ func main() {
 }
 
 func printHelp() {
-	help := "bay — Developer Session & Agent Hub\n" +
-		"\n" +
-		"Usage:\n" +
-		"  bay              Launch bay (opens top bar in tmux)\n" +
-		"  bay -f           Fresh start (kill existing session, relaunch)\n" +
-		"  bay setup        Run the setup wizard\n" +
-		"  bay ls           List all sessions\n" +
-		"  bay kill <name>  Kill a session\n" +
-		"  bay keybinds     Show keybind reference and terminal setup tips\n" +
-		"  bay build        Rebuild bay from latest source\n" +
-		"  bay upgrade      Download and install latest release\n" +
-		"  bay uninstall    Remove all bay data and Claude hooks\n" +
-		"  bay help         Show this help\n" +
-		"\n" +
-		"Memory:\n" +
-		"  bay mem show [session]   Show working memory state\n" +
-		"  bay mem task \"desc\"      Set current task\n" +
-		"  bay mem note \"text\"      Add note to episodic log\n" +
-		"  bay mem log [-n 50]      Show episodic log\n" +
-		"  bay mem clear [session]  Clear session memory\n" +
-		"  bay mem config           Show/toggle memory features\n" +
-		"  bay search \"query\"       Full-text search across all sessions\n" +
-		"  bay context ls|add|rm|toggle|sync  Manage context files\n" +
-		"\n" +
-		"Top bar (` prefix):\n" +
-		"  `+Tab   Cycle session    `+1-9   Jump to session\n" +
-		"  `+r     Cycle repo       `+space  Toggle focus mode\n" +
-		"\n" +
-		"Focused mode (`+space to enter, esc to leave):\n" +
-		"  h/l     Switch repo      n/d/R   New/delete/rename session\n" +
-		"  N       Edit session note\n" +
-		"  m       Memory viewer    Enter   Activate session\n" +
-		"  q       Quit bay         esc     Leave focus mode\n" +
-		"\n" +
-		"Pane management (` then):\n" +
-		"  Arrow           Navigate panes\n" +
-		"  d               Vertical split\n" +
-		"  D               Horizontal split\n" +
-		"  w               Close pane\n" +
-		"  {/}             Swap pane up/down\n" +
-		"  s               Toggle topbar/dev focus\n" +
-		"  ``              Type a literal backtick\n" +
-		"  Click           Focus any pane"
+	help := `bay — Developer Session & Agent Hub
+
+Usage:
+  bay              Launch bay (opens topbar in tmux)
+  bay -f           Fresh start (kill existing session, relaunch)
+
+Sessions:
+  bay session ls             List all sessions
+  bay session kill <name>    Kill a session and clean up its resources
+
+Tasks:
+  bay task "description"     Create a task in the current session
+  bay task add "desc" [-p N] Add a subtask (optionally under task #N)
+  bay task ls                List all tasks with status
+  bay task done <id>         Mark task done
+  bay task doing <id>        Mark task in-progress
+  bay task rm <id>           Remove a task (and subtasks)
+  bay task assign <id>       Assign the current pane to a task
+  bay task clear             Clear all tasks for the session
+
+Context & Memory:
+  bay ctx show [session]     Show working state (tasks, summary, repo, branch)
+  bay ctx note "text"        Add note to session history
+  bay ctx history [-n 50]    Show episodic log
+  bay ctx search "query"     Full-text search across all sessions
+  bay ctx files              List registered context files
+  bay ctx add <name> <path>  Register a context file for agent injection
+  bay ctx rm <name>          Remove a context file
+  bay ctx toggle <name>      Enable/disable a context file
+  bay ctx config             Show/toggle memory features
+  bay ctx clear [session]    Clear all memory for a session
+
+Infrastructure:
+  bay setup        Run the setup wizard
+  bay keybinds     Show keybind reference and terminal setup tips
+  bay build        Rebuild bay from latest source
+  bay upgrade      Download and install latest release
+  bay uninstall    Remove all bay data and Claude hooks
+  bay help         Show this help
+
+Top bar (` + "`" + ` prefix):
+  ` + "`" + `+Tab   Cycle session    ` + "`" + `+1-9   Jump to session
+  ` + "`" + `+r     Cycle repo       ` + "`" + `+space  Toggle focus mode
+
+Focused mode (` + "`" + `+space to enter, esc to leave):
+  h/l     Switch repo      n/d/R   New/delete/rename session
+  N       Edit session note
+  m       Memory viewer    Enter   Activate session
+  q       Quit bay         esc     Leave focus mode
+
+Pane management (` + "`" + ` then):
+  Arrow           Navigate panes
+  d               Vertical split
+  D               Horizontal split
+  w               Close pane
+  {/}             Swap pane up/down
+  s               Toggle topbar/dev focus
+  ` + "``" + `              Type a literal backtick
+  Click           Focus any pane`
 	fmt.Println(help)
 }

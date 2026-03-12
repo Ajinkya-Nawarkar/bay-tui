@@ -55,7 +55,7 @@ func generateIndex(activeFiles []ContextFile) string {
 	var b strings.Builder
 
 	b.WriteString("# Bay-Managed Context\n\n")
-	b.WriteString("This session is managed by bay. Use `bay context` commands to manage context files.\n")
+	b.WriteString("This session is managed by bay. Use `bay ctx` commands to manage context files.\n")
 
 	if len(activeFiles) == 0 {
 		return b.String()

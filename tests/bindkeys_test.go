@@ -117,8 +117,8 @@ func TestBindKeysAgentSplit(t *testing.T) {
 	if c == nil {
 		t.Fatal("no bind-key for 'a' found")
 	}
-	if !argsContain(c.args, "claude") {
-		t.Error("agent split binding should contain 'claude'")
+	if !argsContain(c.args, "bay agent") {
+		t.Error("agent split binding should contain 'bay agent'")
 	}
 	if !argsContain(c.args, "split-window") {
 		t.Error("agent split binding should use split-window")
