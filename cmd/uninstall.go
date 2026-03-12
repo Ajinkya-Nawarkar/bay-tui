@@ -79,7 +79,7 @@ func removeClaudeHook() bool {
 		isBay := false
 		for _, h := range innerHooks {
 			if hm, ok := h.(map[string]any); ok {
-				if cmd, _ := hm["command"].(string); strings.HasSuffix(cmd, "bay context") {
+				if cmd, _ := hm["command"].(string); strings.HasSuffix(cmd, "bay context") || strings.HasSuffix(cmd, "bay ctx") {
 					isBay = true
 					break
 				}

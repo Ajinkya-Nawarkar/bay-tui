@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"bay/internal/config"
 	"bay/internal/memory"
@@ -25,7 +26,19 @@ func Context() error {
 		return nil
 	}
 
-	ctx, err := memory.RenderContext(s.Name)
+	// Look up pane's assigned TaskID from session YAML
+	paneTaskID := 0
+	paneID := os.Getenv("TMUX_PANE")
+	if paneID != "" {
+		for _, p := range s.Panes {
+			if p.PaneID == paneID {
+				paneTaskID = p.TaskID
+				break
+			}
+		}
+	}
+
+	ctx, err := memory.RenderContextDB(nil, s.Name, s.Note, paneTaskID)
 	if err != nil {
 		return nil
 	}

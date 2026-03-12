@@ -60,21 +60,36 @@ bay
 
 On first run, bay walks you through setup — point it at your workspace directory and you're ready.
 
+## Tasks
+
+Set up what needs doing, assign agents to specific tasks, and track progress — all from the terminal.
+
+```bash
+bay task "Fix auth flow"              # Create a task
+bay task add "Write tests" -p 1       # Add subtask under task #1
+bay task ls                           # List all tasks with status
+bay task doing 1                      # Mark in-progress
+bay task done 1                       # Mark done
+bay task assign 2                     # Assign current pane to task #2
+bay task clear                        # Clear all tasks
+```
+
+Tasks are injected into agent context on startup. When a pane is assigned to a task, the agent sees which task it's responsible for.
+
 ## Context & Memory
 
 **Session notes** — Hit `N` and jot down what you're doing. Come back two days later and instantly know: "OAuth2 flow — stuck on token refresh, check middleware."
 
-**Episodic history** — bay automatically records session events. Search across all of it with `bay search "auth bug"` to find that terminal output from last Tuesday.
+**Episodic history** — bay automatically records session events. Search across all of it with `bay ctx search "auth bug"` to find that terminal output from last Tuesday.
 
-**Working state** — Each session tracks its current task, git branch, and last summary. Spin up a Claude Code agent and bay injects this context automatically — no copy-pasting, no preamble.
+**Working state** — Each session tracks its git branch and last summary. Spin up a Claude Code agent and bay injects this context automatically — no copy-pasting, no preamble.
 
-**Context injection rules** — Define files that get injected into agent conversations per-repo with `bay rules add`. Design docs, API specs, coding standards — your agents start every conversation with the right context.
+**Context injection rules** — Define files that get injected into agent conversations per-repo with `bay ctx add`. Design docs, API specs, coding standards — your agents start every conversation with the right context.
 
 ```bash
-bay mem show              # See current session's memory state
-bay mem task "fix auth"   # Set what you're working on
-bay search "migration"    # Full-text search across all session history
-bay rules add DESIGN.md   # Inject into agent context for this repo
+bay ctx show              # See current session's memory state
+bay ctx search "migration"  # Full-text search across all session history
+bay ctx add design DESIGN.md  # Inject into agent context for this repo
 ```
 
 ## Key Bindings
@@ -109,14 +124,27 @@ In **focus mode** (`` `+space ``):
 ## Commands
 
 ```
-bay              Launch bay
-bay -f           Fresh start (kill existing, relaunch)
-bay setup        Run setup wizard
-bay ls           List sessions
-bay kill <name>  Kill a session
-bay keybinds     Keybind reference
-bay mem show     Show session memory
-bay search "q"   Search across session history
+bay                  Launch bay
+bay -f               Fresh start (kill existing, relaunch)
+
+bay session ls       List all sessions
+bay session kill <n> Kill a session
+
+bay task "desc"      Create a task
+bay task ls          List tasks
+bay task done <id>   Mark done
+bay task assign <id> Assign pane to task
+
+bay ctx show         Show session memory state
+bay ctx search "q"   Search across session history
+bay ctx files        List context files
+bay ctx add <n> <p>  Register a context file
+
+bay setup            Run setup wizard
+bay keybinds         Keybind reference
+bay build            Rebuild from source
+bay upgrade          Download latest release
+bay uninstall        Remove all bay data
 ```
 
 ## Requirements
