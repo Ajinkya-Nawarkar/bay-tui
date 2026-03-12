@@ -3,14 +3,17 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"bay/internal/hooks"
+	"bay/internal/memory"
 	"bay/internal/session"
 	baytmux "bay/internal/tmux"
 	"bay/internal/worktree"
 )
 
-// SessionCmd handles the `bay session` subcommands — session lifecycle.
+// SessionCmd handles the `bay session` subcommands — session lifecycle and state.
 func SessionCmd(args []string) error {
 	if len(args) == 0 {
 		printSessionHelp()
@@ -27,6 +30,30 @@ func SessionCmd(args []string) error {
 			return nil
 		}
 		return sessionKill(args[1])
+
+	case "note":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: bay session note \"text\"")
+			return nil
+		}
+		return sessionNote(strings.Join(args[1:], " "))
+
+	case "show":
+		sessionName := ""
+		if len(args) > 1 {
+			sessionName = args[1]
+		}
+		return sessionShow(sessionName)
+
+	case "history":
+		return sessionHistory(args[1:])
+
+	case "clear":
+		sessionName := ""
+		if len(args) > 1 {
+			sessionName = args[1]
+		}
+		return sessionClear(sessionName)
 
 	case "help", "--help", "-h":
 		printSessionHelp()
@@ -91,15 +118,138 @@ func sessionKill(name string) error {
 	return nil
 }
 
-func printSessionHelp() {
-	fmt.Println(`bay session — Session lifecycle management
+func sessionNote(text string) error {
+	s, err := session.FindActiveSession()
+	if err != nil {
+		return fmt.Errorf("no active session: %w", err)
+	}
 
-List, inspect, and destroy bay sessions. Each session is a tmux window
-with its own panes, worktree, and memory state.
+	if err := memory.AppendEpisodic(s.Name, "note", text, ""); err != nil {
+		return fmt.Errorf("adding note: %w", err)
+	}
+
+	fmt.Println("Note saved.")
+	return nil
+}
+
+func sessionShow(sessionName string) error {
+	if sessionName == "" {
+		s, err := session.FindActiveSession()
+		if err != nil {
+			return fmt.Errorf("no active session (specify one): %w", err)
+		}
+		sessionName = s.Name
+	}
+
+	w, err := memory.GetWorking(sessionName)
+	if err != nil {
+		return fmt.Errorf("getting working state: %w", err)
+	}
+	if w == nil {
+		fmt.Printf("No memory state for session '%s'\n", sessionName)
+		return nil
+	}
+
+	fmt.Printf("Session:  %s\n", w.SessionID)
+	fmt.Printf("Repo:     %s\n", w.Repo)
+	if w.WorktreePath != "" {
+		fmt.Printf("Worktree: %s\n", w.WorktreePath)
+	}
+	if w.GitBranch != "" {
+		fmt.Printf("Branch:   %s\n", w.GitBranch)
+	}
+	if w.CurrentTask != "" {
+		fmt.Printf("Task:     %s\n", w.CurrentTask)
+	}
+	if w.LastSummary != "" {
+		fmt.Printf("\nLast Summary:\n%s\n", w.LastSummary)
+	}
+
+	pending, _ := memory.PendingSummaryCount()
+	if pending > 0 {
+		fmt.Printf("\nPending summaries: %d\n", pending)
+	}
+
+	fmt.Printf("Last updated: %s\n", w.LastUpdated.Format("2006-01-02 15:04:05"))
+
+	return nil
+}
+
+func sessionHistory(args []string) error {
+	sessionName := ""
+	n := 20
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-n":
+			if i+1 < len(args) {
+				n, _ = strconv.Atoi(args[i+1])
+				i++
+			}
+		default:
+			sessionName = args[i]
+		}
+	}
+
+	if sessionName == "" {
+		s, err := session.FindActiveSession()
+		if err != nil {
+			return fmt.Errorf("no active session (specify one): %w", err)
+		}
+		sessionName = s.Name
+	}
+
+	entries, err := memory.RecentEpisodic(sessionName, n)
+	if err != nil {
+		return fmt.Errorf("reading episodic log: %w", err)
+	}
+
+	if len(entries) == 0 {
+		fmt.Printf("No episodic entries for '%s'\n", sessionName)
+		return nil
+	}
+
+	fmt.Printf("Episodic log for '%s' (last %d):\n\n", sessionName, n)
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		ts := e.Timestamp.Format("15:04:05")
+		content := e.Content
+		if len(content) > 120 {
+			content = content[:117] + "..."
+		}
+		fmt.Printf("  [%s] %-15s %s\n", ts, e.Type, content)
+	}
+	return nil
+}
+
+func sessionClear(sessionName string) error {
+	if sessionName == "" {
+		s, err := session.FindActiveSession()
+		if err != nil {
+			return fmt.Errorf("no active session (specify one): %w", err)
+		}
+		sessionName = s.Name
+	}
+
+	memory.DeleteSessionEpisodic(sessionName)
+	memory.DeleteWorking(sessionName)
+	fmt.Printf("Cleared memory for '%s'\n", sessionName)
+	return nil
+}
+
+func printSessionHelp() {
+	fmt.Println(`bay session — Session lifecycle and state
+
+Manage bay sessions: list, inspect, destroy, and view session memory.
 
 Usage:
-  bay session ls             List all sessions with repo and worktree info.
-  bay session kill <name>    Kill a session: destroys the tmux window, removes
-                             the worktree, cleans up memory, and deletes the
-                             session file. Cannot be undone.`)
+  bay session ls                     List all sessions with repo and worktree info.
+  bay session kill <name>            Kill a session: destroys the tmux window, removes
+                                     the worktree, cleans up memory, and deletes the
+                                     session file. Cannot be undone.
+  bay session note "text"            Append a note to session history. Use for
+                                     breadcrumbs: decisions, dead ends, context.
+  bay session show [session]         Show session state (tasks, summary, repo, branch).
+  bay session history [session] [-n] Show the episodic log (newest last).
+  bay session clear [session]        Wipe all memory for a session. Cannot be undone.`)
 }

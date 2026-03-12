@@ -5,73 +5,26 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	bayctx "bay/internal/context"
 	"bay/internal/config"
 	"bay/internal/memory"
-	"bay/internal/session"
-	baytmux "bay/internal/tmux"
 )
 
-// Ctx handles the `bay ctx` subcommands — everything about what agents know.
-// Merges the old `bay mem`, `bay context`, and `bay search` commands.
+// Ctx handles the `bay ctx` subcommands — context files, search, and config.
 func Ctx(args []string) error {
 	if len(args) == 0 {
 		return Context()
 	}
 
 	switch args[0] {
-	// --- Memory / working state ---
-	case "show":
-		sessionName := ""
-		if len(args) > 1 {
-			sessionName = args[1]
-		}
-		return ctxShow(sessionName)
-
-	case "task":
-		fmt.Fprintln(os.Stderr, "bay ctx task has moved → use bay task instead")
-		fmt.Fprintln(os.Stderr, "  bay task \"description\"     Create a task")
-		fmt.Fprintln(os.Stderr, "  bay task ls                List tasks")
-		fmt.Fprintln(os.Stderr, "  bay task done <id>         Mark done")
-		return nil
-
-	case "note":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "Usage: bay ctx note \"text\"")
-			return nil
-		}
-		return ctxNote(strings.Join(args[1:], " "))
-
-	case "history":
-		return ctxHistory(args[1:])
-
+	// --- Search ---
 	case "search":
 		return ctxSearch(args[1:])
 
-	case "clear":
-		sessionName := ""
-		if len(args) > 1 {
-			sessionName = args[1]
-		}
-		return ctxClear(sessionName)
-
+	// --- Config ---
 	case "config":
 		return ctxConfig(args[1:])
-
-	// --- Internal (tmux hooks) ---
-	case "capture":
-		if len(args) < 2 {
-			return fmt.Errorf("usage: bay ctx capture <pane-id>")
-		}
-		return ctxCapture(args[1])
-
-	case "record":
-		if len(args) < 4 {
-			return fmt.Errorf("usage: bay ctx record <type> <pane-id> <data>")
-		}
-		return ctxRecord(args[1], args[2], strings.Join(args[3:], " "))
 
 	// --- Context files ---
 	case "files":
@@ -112,137 +65,8 @@ func Ctx(args []string) error {
 }
 
 // ---------------------------------------------------------------------------
-// Memory / working state handlers
+// Search
 // ---------------------------------------------------------------------------
-
-func ctxShow(sessionName string) error {
-	if sessionName == "" {
-		s, err := session.FindActiveSession()
-		if err != nil {
-			return fmt.Errorf("no active session (specify one): %w", err)
-		}
-		sessionName = s.Name
-	}
-
-	w, err := memory.GetWorking(sessionName)
-	if err != nil {
-		return fmt.Errorf("getting working state: %w", err)
-	}
-	if w == nil {
-		fmt.Printf("No memory state for session '%s'\n", sessionName)
-		return nil
-	}
-
-	fmt.Printf("Session:  %s\n", w.SessionID)
-	fmt.Printf("Repo:     %s\n", w.Repo)
-	if w.WorktreePath != "" {
-		fmt.Printf("Worktree: %s\n", w.WorktreePath)
-	}
-	if w.GitBranch != "" {
-		fmt.Printf("Branch:   %s\n", w.GitBranch)
-	}
-	if w.CurrentTask != "" {
-		fmt.Printf("Task:     %s\n", w.CurrentTask)
-	}
-	if w.LastSummary != "" {
-		fmt.Printf("\nLast Summary:\n%s\n", w.LastSummary)
-	}
-
-	pending, _ := memory.PendingSummaryCount()
-	if pending > 0 {
-		fmt.Printf("\nPending summaries: %d\n", pending)
-	}
-
-	fmt.Printf("Last updated: %s\n", w.LastUpdated.Format("2006-01-02 15:04:05"))
-
-	return nil
-}
-
-func ctxTask(task string) error {
-	s, err := session.FindActiveSession()
-	if err != nil {
-		return fmt.Errorf("no active session: %w", err)
-	}
-
-	w, err := memory.GetWorking(s.Name)
-	if err != nil {
-		return err
-	}
-	if w == nil {
-		w = &memory.WorkingState{SessionID: s.Name, Repo: s.Repo, WorktreePath: s.WorkingDir}
-		if err := memory.UpsertWorking(w); err != nil {
-			return fmt.Errorf("creating working state: %w", err)
-		}
-	}
-
-	if err := memory.SetTask(s.Name, task); err != nil {
-		return fmt.Errorf("setting task: %w", err)
-	}
-
-	fmt.Printf("Task set: %s\n", task)
-	return nil
-}
-
-func ctxNote(text string) error {
-	s, err := session.FindActiveSession()
-	if err != nil {
-		return fmt.Errorf("no active session: %w", err)
-	}
-
-	if err := memory.AppendEpisodic(s.Name, "note", text, ""); err != nil {
-		return fmt.Errorf("adding note: %w", err)
-	}
-
-	fmt.Println("Note saved.")
-	return nil
-}
-
-func ctxHistory(args []string) error {
-	sessionName := ""
-	n := 20
-
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-n":
-			if i+1 < len(args) {
-				n, _ = strconv.Atoi(args[i+1])
-				i++
-			}
-		default:
-			sessionName = args[i]
-		}
-	}
-
-	if sessionName == "" {
-		s, err := session.FindActiveSession()
-		if err != nil {
-			return fmt.Errorf("no active session (specify one): %w", err)
-		}
-		sessionName = s.Name
-	}
-
-	entries, err := memory.RecentEpisodic(sessionName, n)
-	if err != nil {
-		return fmt.Errorf("reading episodic log: %w", err)
-	}
-
-	if len(entries) == 0 {
-		fmt.Printf("No episodic entries for '%s'\n", sessionName)
-		return nil
-	}
-
-	fmt.Printf("Episodic log for '%s' (last %d):\n\n", sessionName, n)
-	for i := len(entries) - 1; i >= 0; i-- {
-		e := entries[i]
-		ts := e.Timestamp.Format("15:04:05")
-		content := e.Content
-		if len(content) > 120 {
-			content = content[:117] + "..."
-		}
-		fmt.Printf("  [%s] %-15s %s\n", ts, e.Type, content)
-	}
-	return nil
-}
 
 func ctxSearch(args []string) error {
 	if len(args) == 0 {
@@ -282,20 +106,9 @@ func ctxSearch(args []string) error {
 	return nil
 }
 
-func ctxClear(sessionName string) error {
-	if sessionName == "" {
-		s, err := session.FindActiveSession()
-		if err != nil {
-			return fmt.Errorf("no active session (specify one): %w", err)
-		}
-		sessionName = s.Name
-	}
-
-	memory.DeleteSessionEpisodic(sessionName)
-	memory.DeleteWorking(sessionName)
-	fmt.Printf("Cleared memory for '%s'\n", sessionName)
-	return nil
-}
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
 
 func ctxConfig(args []string) error {
 	if len(args) == 0 {
@@ -350,53 +163,6 @@ func ctxConfig(args []string) error {
 
 	fmt.Printf("%s set\n", feature)
 	return nil
-}
-
-// ---------------------------------------------------------------------------
-// Internal handlers (tmux hooks)
-// ---------------------------------------------------------------------------
-
-func ctxCapture(paneID string) error {
-	sessions, err := session.List()
-	if err != nil {
-		return err
-	}
-
-	buffer, err := baytmux.CapturePaneBuffer(paneID, 100)
-	if err != nil {
-		return fmt.Errorf("capturing pane %s: %w", paneID, err)
-	}
-
-	if len(strings.TrimSpace(buffer)) == 0 {
-		return nil
-	}
-
-	sessionName := "unknown"
-	for _, s := range sessions {
-		if s.TmuxWindow != 0 && baytmux.WindowExists(s.TmuxWindow) {
-			sessionName = s.Name
-			break
-		}
-	}
-
-	cfg, _ := config.Load()
-	if cfg == nil {
-		cfg = config.DefaultConfig()
-	}
-
-	if cfg.Memory.AutoSummarize {
-		return memory.SummarizeAsync(sessionName, buffer, paneID)
-	}
-
-	return memory.AppendEpisodic(sessionName, "pane_snapshot", buffer, paneID)
-}
-
-func ctxRecord(eventType, paneID, data string) error {
-	s, err := session.FindActiveSession()
-	if err != nil {
-		return memory.AppendEpisodic("unknown", eventType, data, paneID)
-	}
-	return memory.AppendEpisodic(s.Name, eventType, data, paneID)
 }
 
 // ---------------------------------------------------------------------------
@@ -554,27 +320,14 @@ func parseBool(s string) bool {
 // ---------------------------------------------------------------------------
 
 func printCtxHelp() {
-	fmt.Println(`bay ctx — Agent context and session memory
+	fmt.Println(`bay ctx — Context files, search, and configuration
 
-Tells agents what they need to know: current task, session history,
-context files, and cross-session search. Also the internal plumbing
-that captures pane output for automatic summarization.
+Manage what gets injected into agent context: context files, cross-session
+search, and memory configuration.
 
 Usage:
 
-  Working State
-    bay ctx show [session]             Show session state (tasks, summary, repo, branch).
-                                       Use to check what an agent will see on startup.
-    bay ctx note "text"                Append a note to the episodic log. Use for breadcrumbs
-                                       that future agents or sessions should know about.
-
-  Tasks (see bay task --help for full reference)
-    bay task "description"             Create a task in the current session.
-    bay task ls                        List all tasks with status.
-
-  History & Search
-    bay ctx history [session] [-n 50]  Show the episodic log (newest last). Useful for
-                                       reviewing what happened in a session over time.
+  Search
     bay ctx search "query" [--session S]
                                        Full-text search across all session history.
                                        Finds past terminal output, notes, and summaries.
@@ -587,18 +340,10 @@ Usage:
                                        Category: "rules" (default), "docs", "standards".
     bay ctx rm <name>                  Remove a registered context file.
     bay ctx toggle <name>              Enable or disable a context file without removing it.
-    bay ctx sync                       Re-sync context files to all worktree sessions.
-                                       Run after adding/removing files if agents are active.
+    bay ctx sync                       Regenerate resource navigator and indexes.
 
   Configuration
     bay ctx config                     Show current memory feature settings.
     bay ctx config <feature> on|off    Toggle: enabled, episodic_logging, auto_summarize,
-                                       context_injection. Also: context_budget <int>.
-    bay ctx clear [session]            Wipe all memory (episodic + working state) for a
-                                       session. Cannot be undone.
-
-  Internal (called by tmux hooks — not for direct use)
-    bay ctx capture <pane-id>          Capture pane buffer on exit, queue for summarization.
-    bay ctx record <type> <pane-id> <data>
-                                       Append a typed event to the episodic log.`)
+                                       context_injection. Also: context_budget <int>.`)
 }

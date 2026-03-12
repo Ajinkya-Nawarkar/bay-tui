@@ -40,8 +40,14 @@ func main() {
 			os.Exit(1)
 		}
 
-	case "ctx", "context", "rules":
+	case "ctx":
 		if err := cmd.Ctx(args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "internal":
+		if err := cmd.Internal(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -89,7 +95,8 @@ func main() {
 		}
 
 	case "sync-panes":
-		if err := cmd.SyncPanes(); err != nil {
+		// Legacy alias — routes to bay internal sync-panes
+		if err := cmd.Internal([]string{"sync-panes"}); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -118,6 +125,10 @@ Usage:
 Sessions:
   bay session ls             List all sessions
   bay session kill <name>    Kill a session and clean up its resources
+  bay session note "text"    Add note to session history
+  bay session show [name]    Show session state (tasks, summary, repo, branch)
+  bay session history [-n]   Show episodic log
+  bay session clear [name]   Clear all memory for a session
 
 Tasks:
   bay task "description"     Create a task in the current session
@@ -129,17 +140,13 @@ Tasks:
   bay task assign <id>       Assign the current pane to a task
   bay task clear             Clear all tasks for the session
 
-Context & Memory:
-  bay ctx show [session]     Show working state (tasks, summary, repo, branch)
-  bay ctx note "text"        Add note to session history
-  bay ctx history [-n 50]    Show episodic log
+Context:
   bay ctx search "query"     Full-text search across all sessions
   bay ctx files              List registered context files
   bay ctx add <name> <path>  Register a context file for agent injection
   bay ctx rm <name>          Remove a context file
   bay ctx toggle <name>      Enable/disable a context file
   bay ctx config             Show/toggle memory features
-  bay ctx clear [session]    Clear all memory for a session
 
 Infrastructure:
   bay setup        Run the setup wizard

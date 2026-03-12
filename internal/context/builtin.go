@@ -30,18 +30,16 @@ and provides persistent memory. Resources (rules, skills, agents, plugins) live 
 - ` + "`bay task assign <id>`" + ` — assign the current pane to a task. The context
   will show which task this agent is responsible for.
 
-### Working State — session context and notes
+### Session State
 
-- ` + "`bay ctx note \"text\"`" + ` — log a note to session history. Use for breadcrumbs:
-  decisions made, dead ends hit, things the next agent should know.
-- ` + "`bay ctx show`" + ` — view current session state (tasks, summary, repo, branch).
+- ` + "`bay session show`" + ` — view current session state (tasks, summary, repo, branch).
   Run this when you need to understand what was happening before you started.
+- ` + "`bay session history [-n 50]`" + ` — show the episodic log for this session.
 
-### Search & History — find past work across all sessions
+### Search — find past work across all sessions
 
 - ` + "`bay ctx search \"query\"`" + ` — full-text search across all session history.
   Finds terminal output, notes, and summaries from any session.
-- ` + "`bay ctx history [-n 50]`" + ` — show the episodic log for this session.
 
 ### Context Files — documents injected into every agent in a session
 
@@ -65,9 +63,9 @@ Each directory has an ` + "`index.yaml`" + ` catalog. Read ` + "`~/.bay/CLAUDE.m
 
 There are two levels of progress tracking:
 
-- **Session progress** → ` + "`bay mem task`" + `, ` + "`bay mem note`" + `
-  Use for what you're doing right now in this session. Captured automatically on session
-  switch and injected when new agents start. Ephemeral — scoped to the session lifecycle.
+- **Session progress** → ` + "`bay task`" + `
+  Use for what you're doing right now in this session. Tasks are injected into every
+  agent's context on startup. Ephemeral — scoped to the session lifecycle.
 
 - **Project progress** → ` + "`~/.bay/context/projects/<project-name>/status.md`" + `
   Use for milestones, what's shipped, what's in progress, known issues, and current state

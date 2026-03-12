@@ -76,7 +76,7 @@ func GenerateNavigator() error {
 	b.WriteString("Read `status.md` at the start of work. Update it when you complete significant changes.\n")
 	b.WriteString("Updates section is **append-only with date headings** (`### YYYY-MM-DD — description`).\n\n")
 	b.WriteString("Other useful files: `architecture.md`, `design.md`, conventions, etc.\n\n")
-	b.WriteString("Session-level progress goes to `bay mem task` / `bay mem note` (ephemeral).\n")
+	b.WriteString("Session-level progress goes to `bay task` (ephemeral, agent-visible).\n")
 	b.WriteString("Project-level progress goes to `status.md` (persistent across all sessions).\n")
 
 	return os.WriteFile(navigatorPath, []byte(b.String()), 0644)

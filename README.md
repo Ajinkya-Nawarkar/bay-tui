@@ -86,6 +86,8 @@ Tasks are injected into agent context on startup. When a pane is assigned to a t
 
 **Context injection rules** — Define files that get injected into agent conversations per-repo with `bay ctx add`. Design docs, API specs, coding standards — your agents start every conversation with the right context.
 
+**Project context** — Each project gets a `~/.bay/context/projects/<project>/status.md` scaffolded on first session creation. Agents write project-level progress here (milestones, what shipped, known issues) using timestamped updates. Session-level progress stays in `bay task`.
+
 ```bash
 bay ctx show              # See current session's memory state
 bay ctx search "migration"  # Full-text search across all session history
@@ -129,13 +131,15 @@ bay -f               Fresh start (kill existing, relaunch)
 
 bay session ls       List all sessions
 bay session kill <n> Kill a session
+bay session note "t" Append a note to session history
+bay session show     Show session state
+bay session history  Show episodic log
 
 bay task "desc"      Create a task
 bay task ls          List tasks
 bay task done <id>   Mark done
 bay task assign <id> Assign pane to task
 
-bay ctx show         Show session memory state
 bay ctx search "q"   Search across session history
 bay ctx files        List context files
 bay ctx add <n> <p>  Register a context file

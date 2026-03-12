@@ -378,7 +378,7 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	// Hooks: re-lock topbar height on layout-changing events.
 	// after-split-window and after-kill-pane also sync pane layout to session YAML
 	// so that pane state is persisted immediately, not just on session deactivation.
-	syncPanes := "bay sync-panes &"
+	syncPanes := "bay internal sync-panes &"
 	clearTitle := "tmux select-pane -T ''"
 	for _, hook := range []string{"after-select-window", "client-session-changed"} {
 		run("set-hook", "-g", hook,
@@ -460,7 +460,7 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 
 	// Memory hooks: capture pane buffer on pane exit for episodic recording
 	run("set-hook", "-g", "pane-exited",
-		"run-shell 'bay ctx capture #{pane_id} &'")
+		"run-shell 'bay internal capture #{pane_id} &'")
 
 	return nil
 }
