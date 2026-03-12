@@ -16,10 +16,10 @@ func TestContextFileAddAndList(t *testing.T) {
 	}
 	defer d.Close()
 
-	if err := bayctx.AddDB(d, "go-standards", "/home/user/.claude/docs/go-standards.md", "global", "rules"); err != nil {
+	if err := bayctx.AddDB(d, "go-standards", "/home/user/.claude/docs/go-standards.md", "global", "rules", "rules", "Go coding standards"); err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
-	if err := bayctx.AddDB(d, "bay-conv", "/home/user/.claude/docs/bay/DESIGN.md", "repo:bay", "docs"); err != nil {
+	if err := bayctx.AddDB(d, "bay-conv", "/home/user/.claude/docs/bay/DESIGN.md", "repo:bay", "docs", "rules", "Bay design doc"); err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
 
@@ -53,7 +53,7 @@ func TestContextFileRemove(t *testing.T) {
 	}
 	defer d.Close()
 
-	bayctx.AddDB(d, "test-rule", "/tmp/test.md", "global", "rules")
+	bayctx.AddDB(d, "test-rule", "/tmp/test.md", "global", "rules", "rules", "")
 
 	if err := bayctx.RemoveDB(d, "test-rule"); err != nil {
 		t.Fatalf("Remove failed: %v", err)
@@ -72,7 +72,7 @@ func TestContextFileToggle(t *testing.T) {
 	}
 	defer d.Close()
 
-	bayctx.AddDB(d, "test-rule", "/tmp/test.md", "global", "rules")
+	bayctx.AddDB(d, "test-rule", "/tmp/test.md", "global", "rules", "rules", "")
 
 	// Initially enabled
 	list, _ := bayctx.ListDB(d)
@@ -105,10 +105,10 @@ func TestActiveRules(t *testing.T) {
 	}
 	defer d.Close()
 
-	bayctx.AddDB(d, "global-rule", "/tmp/global.md", "global", "rules")
-	bayctx.AddDB(d, "bay-rule", "/tmp/bay.md", "repo:bay", "rules")
-	bayctx.AddDB(d, "other-rule", "/tmp/other.md", "repo:other-project", "rules")
-	bayctx.AddDB(d, "disabled-global", "/tmp/disabled.md", "global", "rules")
+	bayctx.AddDB(d, "global-rule", "/tmp/global.md", "global", "rules", "rules", "")
+	bayctx.AddDB(d, "bay-rule", "/tmp/bay.md", "repo:bay", "rules", "rules", "")
+	bayctx.AddDB(d, "other-rule", "/tmp/other.md", "repo:other-project", "rules", "rules", "")
+	bayctx.AddDB(d, "disabled-global", "/tmp/disabled.md", "global", "rules", "rules", "")
 	bayctx.ToggleDB(d, "disabled-global")
 
 	active, err := bayctx.ActiveRulesDB(d, "bay")
@@ -163,8 +163,8 @@ func TestContextFileUpsert(t *testing.T) {
 	}
 	defer d.Close()
 
-	bayctx.AddDB(d, "test", "/path/v1.md", "global", "rules")
-	bayctx.AddDB(d, "test", "/path/v2.md", "repo:bay", "docs") // upsert
+	bayctx.AddDB(d, "test", "/path/v1.md", "global", "rules", "rules", "v1 desc")
+	bayctx.AddDB(d, "test", "/path/v2.md", "repo:bay", "docs", "skills", "v2 desc") // upsert
 
 	list, _ := bayctx.ListDB(d)
 	if len(list) != 1 {
@@ -179,6 +179,12 @@ func TestContextFileUpsert(t *testing.T) {
 	if list[0].Category != "docs" {
 		t.Errorf("expected updated category 'docs', got '%s'", list[0].Category)
 	}
+	if list[0].Type != "skills" {
+		t.Errorf("expected updated type 'skills', got '%s'", list[0].Type)
+	}
+	if list[0].Description != "v2 desc" {
+		t.Errorf("expected updated description 'v2 desc', got '%s'", list[0].Description)
+	}
 }
 
 func TestContextFileCategory(t *testing.T) {
@@ -188,9 +194,9 @@ func TestContextFileCategory(t *testing.T) {
 	}
 	defer d.Close()
 
-	bayctx.AddDB(d, "coding-std", "/tmp/std.md", "global", "standards")
-	bayctx.AddDB(d, "api-ref", "/tmp/api.md", "global", "docs")
-	bayctx.AddDB(d, "lint-rules", "/tmp/lint.md", "global", "rules")
+	bayctx.AddDB(d, "coding-std", "/tmp/std.md", "global", "standards", "rules", "")
+	bayctx.AddDB(d, "api-ref", "/tmp/api.md", "global", "docs", "rules", "")
+	bayctx.AddDB(d, "lint-rules", "/tmp/lint.md", "global", "rules", "rules", "")
 
 	list, _ := bayctx.ListDB(d)
 	if len(list) != 3 {
@@ -209,5 +215,41 @@ func TestContextFileCategory(t *testing.T) {
 	}
 	if cats["lint-rules"] != "rules" {
 		t.Errorf("expected 'rules', got '%s'", cats["lint-rules"])
+	}
+}
+
+func TestContextFileTypeAndDescription(t *testing.T) {
+	d, err := db.OpenPath(":memory:")
+	if err != nil {
+		t.Fatalf("OpenPath failed: %v", err)
+	}
+	defer d.Close()
+
+	bayctx.AddDB(d, "my-skill", "/tmp/skill.md", "global", "rules", "skills", "Custom skill for testing")
+	bayctx.AddDB(d, "my-agent", "/tmp/agent.md", "global", "rules", "agents", "Agent config")
+	bayctx.AddDB(d, "my-rule", "/tmp/rule.md", "global", "rules", "rules", "Go standards")
+
+	list, _ := bayctx.ListDB(d)
+	if len(list) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(list))
+	}
+
+	types := map[string]string{}
+	descs := map[string]string{}
+	for _, f := range list {
+		types[f.Name] = f.Type
+		descs[f.Name] = f.Description
+	}
+	if types["my-skill"] != "skills" {
+		t.Errorf("expected type 'skills', got '%s'", types["my-skill"])
+	}
+	if descs["my-skill"] != "Custom skill for testing" {
+		t.Errorf("expected description, got '%s'", descs["my-skill"])
+	}
+	if types["my-agent"] != "agents" {
+		t.Errorf("expected type 'agents', got '%s'", types["my-agent"])
+	}
+	if types["my-rule"] != "rules" {
+		t.Errorf("expected type 'rules', got '%s'", types["my-rule"])
 	}
 }

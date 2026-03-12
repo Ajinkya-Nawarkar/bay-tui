@@ -28,6 +28,16 @@ func WorktreesDir() string {
 	return filepath.Join(BayDir(), "worktrees")
 }
 
+// ContextDir returns the path to ~/.bay/context/
+func ContextDir() string {
+	return filepath.Join(BayDir(), "context")
+}
+
+// ContextProjectsDir returns the path to ~/.bay/context/projects/
+func ContextProjectsDir() string {
+	return filepath.Join(ContextDir(), "projects")
+}
+
 // EnsureDirs creates the ~/.bay/ directory structure.
 func EnsureDirs() error {
 	dirs := []string{
@@ -37,6 +47,8 @@ func EnsureDirs() error {
 		filepath.Join(BayDir(), "agents"),
 		filepath.Join(BayDir(), "logs"),
 		filepath.Join(BayDir(), "plugins"),
+		ContextDir(),
+		ContextProjectsDir(),
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0755); err != nil {

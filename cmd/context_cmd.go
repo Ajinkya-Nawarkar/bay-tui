@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	bayctx "bay/internal/context"
-	"bay/internal/session"
 )
 
 // ContextCmd handles the `bay context` subcommands.
@@ -35,6 +34,8 @@ func ContextCmd(args []string) error {
 		return contextToggle(args[1])
 	case "sync":
 		return contextSync()
+	case "cleanup":
+		return contextCleanup()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown context command: %s\n", args[0])
 		printContextHelp()
@@ -53,7 +54,7 @@ func contextLs() error {
 		return nil
 	}
 
-	fmt.Printf("%-20s %-10s %-8s %-15s %s\n", "NAME", "CATEGORY", "STATUS", "SCOPE", "PATH")
+	fmt.Printf("%-20s %-10s %-8s %-8s %-15s %-30s %s\n", "NAME", "TYPE", "CATEGORY", "STATUS", "SCOPE", "DESCRIPTION", "PATH")
 	for _, f := range list {
 		status := "on"
 		if !f.Enabled {
@@ -63,14 +64,22 @@ func contextLs() error {
 		if cat == "" {
 			cat = "rules"
 		}
-		fmt.Printf("%-20s %-10s %-8s %-15s %s\n", f.Name, cat, status, f.Scope, f.Path)
+		typ := f.Type
+		if typ == "" {
+			typ = "rules"
+		}
+		desc := f.Description
+		if len(desc) > 28 {
+			desc = desc[:28] + ".."
+		}
+		fmt.Printf("%-20s %-10s %-8s %-8s %-15s %-30s %s\n", f.Name, typ, cat, status, f.Scope, desc, f.Path)
 	}
 	return nil
 }
 
 func contextAdd(args []string) error {
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "Usage: bay context add <name> <path> [--scope S] [--category C]")
+		fmt.Fprintln(os.Stderr, "Usage: bay context add <name> <path> [--scope S] [--category C] [--type T] [--description D]")
 		return nil
 	}
 
@@ -78,6 +87,8 @@ func contextAdd(args []string) error {
 	path := args[1]
 	scope := "global"
 	category := "rules"
+	typ := "rules"
+	description := ""
 
 	// Resolve to absolute path
 	absPath, err := filepath.Abs(path)
@@ -99,14 +110,22 @@ func contextAdd(args []string) error {
 			category = args[i+1]
 			i++
 		}
+		if args[i] == "--type" && i+1 < len(args) {
+			typ = args[i+1]
+			i++
+		}
+		if args[i] == "--description" && i+1 < len(args) {
+			description = args[i+1]
+			i++
+		}
 	}
 
-	if err := bayctx.Add(name, path, scope, category); err != nil {
+	if err := bayctx.Add(name, path, scope, category, typ, description); err != nil {
 		return fmt.Errorf("adding context file: %w", err)
 	}
 
-	fmt.Printf("Added '%s' (%s, %s) → %s\n", name, category, scope, path)
-	syncAllWorktreeSessions()
+	fmt.Printf("Added '%s' (%s/%s, %s) → %s\n", name, typ, category, scope, path)
+	regenerateNavigator()
 	return nil
 }
 
@@ -115,7 +134,7 @@ func contextRm(name string) error {
 		return fmt.Errorf("removing context file: %w", err)
 	}
 	fmt.Printf("Removed '%s'\n", name)
-	syncAllWorktreeSessions()
+	regenerateNavigator()
 	return nil
 }
 
@@ -137,28 +156,36 @@ func contextToggle(name string) error {
 		}
 	}
 
-	syncAllWorktreeSessions()
+	regenerateNavigator()
 	return nil
 }
 
 func contextSync() error {
-	fmt.Println("Syncing context files to all worktree sessions...")
-	syncAllWorktreeSessions()
+	fmt.Println("Regenerating navigator and indexes...")
+	regenerateNavigator()
 	fmt.Println("Done.")
 	return nil
 }
 
-// syncAllWorktreeSessions re-syncs context files to all active worktree sessions.
-func syncAllWorktreeSessions() {
-	sessions, err := session.List()
+func contextCleanup() error {
+	fmt.Println("Removing old worktree-synced .claude/rules/bay/ directories...")
+	cleaned, err := bayctx.CleanupWorktreeRules()
 	if err != nil {
-		return
+		return fmt.Errorf("cleanup failed: %w", err)
 	}
-	for _, s := range sessions {
-		if s.IsWorktree {
-			bayctx.SyncRulesToWorktree(s.WorkingDir, s.Repo)
-		}
+	if cleaned == 0 {
+		fmt.Println("No worktree rule directories found to clean up.")
+	} else {
+		fmt.Printf("Cleaned %d worktree(s).\n", cleaned)
 	}
+	return nil
+}
+
+// regenerateNavigator regenerates ~/.bay/CLAUDE.md and all index.yaml files.
+func regenerateNavigator() {
+	bayctx.EnsureResourceDirs()
+	bayctx.GenerateNavigator()
+	bayctx.GenerateAllIndexes()
 }
 
 func printContextHelp() {
@@ -166,17 +193,15 @@ func printContextHelp() {
 
 Usage:
   bay context ls                                     List all registered context files
-  bay context add <name> <path> [--scope S] [--category C]  Register a context file
+  bay context add <name> <path> [flags]              Register a context file
   bay context rm <name>                              Remove a context file
   bay context toggle <name>                          Enable/disable a context file
-  bay context sync                                   Re-sync all worktree sessions
+  bay context sync                                   Regenerate navigator and indexes
+  bay context cleanup                                Remove old worktree-synced files
 
-Scope formats:
-  global        Applies to all sessions (default)
-  repo:<name>   Applies only to sessions for that repo
-
-Categories:
-  rules         Rules and guidelines (default)
-  docs          Documentation and references
-  standards     Coding standards`)
+Flags for add:
+  --scope S          global (default) or repo:<name>
+  --category C       rules, docs, standards (default: rules)
+  --type T           rules, skills, agents, plugins (default: rules)
+  --description D    Short description for the resource catalog`)
 }

@@ -141,6 +141,10 @@ func migrate(db *sql.DB) error {
 	db.Exec(`ALTER TABLE rules RENAME TO context_files`)
 	db.Exec(`ALTER TABLE context_files ADD COLUMN category TEXT DEFAULT 'rules'`)
 
+	// Add type and description columns for lazy-loading resource navigator
+	db.Exec(`ALTER TABLE context_files ADD COLUMN type TEXT DEFAULT 'rules'`)
+	db.Exec(`ALTER TABLE context_files ADD COLUMN description TEXT DEFAULT ''`)
+
 	return nil
 }
 

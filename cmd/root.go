@@ -95,6 +95,11 @@ func runTUI() error {
 	// Ensure built-in context files exist
 	bayctx.EnsureBuiltinRules(nil)
 
+	// Set up lazy-loading resource navigator
+	bayctx.EnsureResourceDirs()
+	bayctx.GenerateNavigator()
+	bayctx.GenerateAllIndexes()
+
 	// Process any pending LLM summaries from prior crashes/restarts
 	go memory.ProcessPendingSummaries()
 
