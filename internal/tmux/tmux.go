@@ -74,8 +74,12 @@ func SessionExists(name string) bool {
 // (e.g., if the binary is missing or consistently crashing).
 func wrapTopbarCmd(cmd string) string {
 	// Returns just the script body — callers must pass it to bash -c as a separate arg.
-	// The command is single-quoted to handle spaces/special chars in binary paths.
-	quoted := "'" + strings.ReplaceAll(cmd, "'", "'\\''") + "'"
+	// Split command to quote the binary path (handles spaces) while leaving args unquoted.
+	parts := strings.SplitN(cmd, " ", 2)
+	quoted := "'" + strings.ReplaceAll(parts[0], "'", "'\\''") + "'"
+	if len(parts) > 1 {
+		quoted += " " + parts[1]
+	}
 	return fmt.Sprintf(
 		"fails=0; "+
 			"while true; do "+
