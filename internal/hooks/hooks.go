@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"bay/internal/config"
-	bayctx "bay/internal/context"
 	"bay/internal/memory"
 	"bay/internal/session"
 	baytmux "bay/internal/tmux"
@@ -89,9 +88,6 @@ func OnSessionCreate(sessionName, repoName, workingDir string) error {
 	if cfg.Memory.EpisodicLogging {
 		memory.AppendEpisodic(sessionName, "activate", "session created: "+repoName, "")
 	}
-
-	// Scaffold project context directory with status.md template
-	bayctx.EnsureProjectContext(repoName)
 
 	return nil
 }

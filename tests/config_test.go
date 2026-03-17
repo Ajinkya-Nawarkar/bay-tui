@@ -71,9 +71,7 @@ func TestEnsureDirs(t *testing.T) {
 		".bay",
 		".bay/sessions",
 		".bay/worktrees",
-		".bay/agents",
 		".bay/logs",
-		".bay/plugins",
 	}
 
 	for _, d := range expectedDirs {

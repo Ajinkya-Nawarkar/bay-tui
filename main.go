@@ -140,12 +140,8 @@ Tasks:
   bay task assign <id>       Assign the current pane to a task
   bay task clear             Clear all tasks for the session
 
-Context:
+Search & Config:
   bay ctx search "query"     Full-text search across all sessions
-  bay ctx files              List registered context files
-  bay ctx add <name> <path>  Register a context file for agent injection
-  bay ctx rm <name>          Remove a context file
-  bay ctx toggle <name>      Enable/disable a context file
   bay ctx config             Show/toggle memory features
 
 Infrastructure:
