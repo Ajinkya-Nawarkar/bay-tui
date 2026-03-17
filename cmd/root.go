@@ -14,6 +14,20 @@ import (
 	"bay/internal/tui"
 )
 
+// ensureValidTerm checks that the current TERM has a valid terminfo entry.
+// Terminals like Ghostty set TERM=xterm-ghostty which requires a terminfo
+// entry that may not be installed. Without it, tmux fails to start.
+func ensureValidTerm() {
+	term := os.Getenv("TERM")
+	if term == "" || term == "xterm-256color" {
+		return
+	}
+	// Use infocmp to check if the terminfo entry exists.
+	if err := exec.Command("infocmp", term).Run(); err != nil {
+		os.Setenv("TERM", "xterm-256color")
+	}
+}
+
 // Root is the main `bay` command handler.
 // If fresh is true, kills the existing bay session first.
 func Root(fresh bool) error {
@@ -21,6 +35,10 @@ func Root(fresh bool) error {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		return fmt.Errorf("tmux is required but not found. Install with: brew install tmux")
 	}
+
+	// If the current TERM lacks a terminfo entry, tmux will fail with
+	// "server exited unexpectedly". Fall back to xterm-256color automatically.
+	ensureValidTerm()
 
 	if fresh && baytmux.SessionExists(baytmux.MainSession) {
 		baytmux.KillMainSession()

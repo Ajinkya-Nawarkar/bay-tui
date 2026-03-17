@@ -68,6 +68,15 @@ func SessionExists(name string) bool {
 	return err == nil
 }
 
+// collectDiagnostics gathers tmux environment info for debugging startup failures.
+func collectDiagnostics() string {
+	ver, _ := run("-V")
+	if ver == "" {
+		ver = "unknown"
+	}
+	return fmt.Sprintf("(tmux %s, TERM=%s)", ver, os.Getenv("TERM"))
+}
+
 // wrapTopbarCmd wraps the topbar command so it auto-restarts on unexpected exit.
 // A normal exit (status 0, from bay quitting) breaks the loop.
 // Exits after 5 consecutive rapid failures to avoid spinning forever
@@ -125,7 +134,9 @@ func CreateMainSession(topbarCmd string) error {
 	}
 
 	if out, err := run("new-session", "-d", "-s", MainSession, "bash", "-c", wrapped); err != nil {
-		return fmt.Errorf("new-session: %s: %w", out, err)
+		// Collect diagnostics to help debug tmux failures on user machines.
+		diag := collectDiagnostics()
+		return fmt.Errorf("new-session: %s: %w\n%s", out, err, diag)
 	}
 
 	// Capture the topbar's unique pane ID so we can track it across windows.
