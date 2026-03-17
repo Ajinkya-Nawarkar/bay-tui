@@ -73,24 +73,27 @@ func SessionExists(name string) bool {
 // Exits after 5 consecutive rapid failures to avoid spinning forever
 // (e.g., if the binary is missing or consistently crashing).
 func wrapTopbarCmd(cmd string) string {
-	return fmt.Sprintf("bash -c '"+
+	// Returns just the script body — callers must pass it to bash -c as a separate arg.
+	// The command is single-quoted to handle spaces/special chars in binary paths.
+	quoted := "'" + strings.ReplaceAll(cmd, "'", "'\\''") + "'"
+	return fmt.Sprintf(
 		"fails=0; "+
-		"while true; do "+
-		"start=$SECONDS; "+
-		"%s; "+
-		"[ $? -eq 0 ] && break; "+
-		"elapsed=$((SECONDS - start)); "+
-		"if [ $elapsed -lt 2 ]; then "+
-		"fails=$((fails + 1)); "+
-		"else "+
-		"fails=0; "+
-		"fi; "+
-		"if [ $fails -ge 5 ]; then "+
-		"echo \"bay topbar crashed 5 times in a row, giving up\"; "+
-		"break; "+
-		"fi; "+
-		"sleep 0.5; "+
-		"done'", cmd)
+			"while true; do "+
+			"start=$SECONDS; "+
+			"%s; "+
+			"[ $? -eq 0 ] && break; "+
+			"elapsed=$((SECONDS - start)); "+
+			"if [ $elapsed -lt 2 ]; then "+
+			"fails=$((fails + 1)); "+
+			"else "+
+			"fails=0; "+
+			"fi; "+
+			"if [ $fails -ge 5 ]; then "+
+			"echo \"bay topbar crashed 5 times in a row, giving up\"; "+
+			"break; "+
+			"fi; "+
+			"sleep 0.5; "+
+			"done", quoted)
 }
 
 // CreateMainSession creates the bay session with just the topbar pane.
@@ -108,17 +111,17 @@ func CreateMainSession(topbarCmd string) error {
 			return nil
 		}
 		// Topbar is gone — spawn a fresh one in a new window.
-		out, err := run("new-window", "-t", MainSession+":", "-d", "-P", "-F", "#{pane_id}", "--", "bash", "-c", wrapped)
+		out, err := run("new-window", "-t", MainSession+":", "-d", "-P", "-F", "#{pane_id}", "bash", "-c", wrapped)
 		if err != nil {
-			return fmt.Errorf("new-window for topbar: %w", err)
+			return fmt.Errorf("new-window for topbar: %s: %w", out, err)
 		}
 		topbarPaneID = strings.TrimSpace(out)
 		saveTopbarPaneID(topbarPaneID)
 		return nil
 	}
 
-	if _, err := run("new-session", "-d", "-s", MainSession, wrapped); err != nil {
-		return fmt.Errorf("new-session: %w", err)
+	if out, err := run("new-session", "-d", "-s", MainSession, "bash", "-c", wrapped); err != nil {
+		return fmt.Errorf("new-session: %s: %w", out, err)
 	}
 
 	// Capture the topbar's unique pane ID so we can track it across windows.
