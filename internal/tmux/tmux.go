@@ -453,9 +453,10 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 		fmt.Sprintf("[ \"#{pane_id}\" != \"$(cat %s)\" ]", topbarIDFile),
 		fmt.Sprintf("run-shell 'tmux split-window -h -c \"#{pane_current_path}\" '\"'\"'bash -c \"bay agent\"'\"'\"' && tmux select-pane -T %s && %s'", agentCmd, resizeTopbar))
 
-	// w to close pane — guard by comparing pane_id against topbar's persisted ID.
+	// w to close pane — guard against topbar AND last dev pane.
+	// Count panes in the window, subtract 1 for topbar — only allow kill if >1 dev panes remain.
 	run("bind-key", "-r", "w", "if-shell",
-		fmt.Sprintf("[ \"#{pane_id}\" != \"$(cat %s)\" ]", topbarIDFile),
+		fmt.Sprintf("[ \"#{pane_id}\" != \"$(cat %s)\" ] && [ $(tmux list-panes | wc -l) -gt 2 ]", topbarIDFile),
 		fmt.Sprintf("run-shell 'tmux kill-pane && %s'", resizeTopbar))
 
 	// Quick-access keybinds: send keys to topbar pane (pane 0 of current window)
