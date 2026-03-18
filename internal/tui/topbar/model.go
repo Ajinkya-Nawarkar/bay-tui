@@ -103,8 +103,8 @@ type Model struct {
 
 	// Agent activity indicator: session name → "active" / "idle" / ""
 	agentStatus map[string]string
-	// Previous pane content snippets for activity detection (paneID → last content)
-	prevSnippets map[string]string
+	// Previous pane cursor positions for activity detection (paneID → "Y,X")
+	prevCursors map[string]string
 
 	// Diff summary cache: session name → diff summary
 	diffCache map[string]*diffSummary
@@ -324,7 +324,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		allPanes := baytmux.SnapshotAllPanes()
 		now := time.Now().Unix()
 		status := make(map[string]string)
-		newSnippets := make(map[string]string)
+		newCursors := make(map[string]string)
 
 		for _, s := range m.sessions {
 			if s.TmuxWindow == 0 {
@@ -341,17 +341,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					continue
 				}
 				hasAgent = true
-				newSnippets[p.PaneID] = p.ContentSnippet
+				newCursors[p.PaneID] = p.CursorPos
 
 				// Primary: use pane_activity timestamp if available
 				if p.Activity > 0 {
 					if now-p.Activity <= 3 {
 						isActive = true
 					}
-				} else if p.ContentSnippet != "" {
-					// Fallback: compare content with previous tick
-					if prev, ok := m.prevSnippets[p.PaneID]; ok {
-						if p.ContentSnippet != prev {
+				} else if p.CursorPos != "" {
+					// Fallback: compare cursor position with previous tick
+					if prev, ok := m.prevCursors[p.PaneID]; ok {
+						if p.CursorPos != prev {
 							isActive = true
 						}
 					}
@@ -370,7 +370,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.agentStatus = status
-		m.prevSnippets = newSnippets
+		m.prevCursors = newCursors
 
 		// Refresh diff for the currently displayed session
 		cmds := []tea.Cmd{tea.Tick(2 * time.Second, func(time.Time) tea.Msg { return agentTickMsg{} })}
@@ -1281,12 +1281,12 @@ func (m Model) updateQuickSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.activateSession(s)
 		}
 		return m, nil
-	case "up":
+	case "left":
 		if m.switchSelected > 0 {
 			m.switchSelected--
 		}
 		return m, nil
-	case "down":
+	case "right":
 		if m.switchSelected < len(m.switchMatches)-1 {
 			m.switchSelected++
 		}

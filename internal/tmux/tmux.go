@@ -573,13 +573,13 @@ func CaptureAllDevPanes(windowIndex, lines int) (map[string]string, error) {
 
 // PaneInfo holds information about a single tmux pane.
 type PaneInfo struct {
-	PaneID         string
-	Command        string
-	Cwd            string
-	IsAgent        bool
-	Title          string
-	Activity       int64  // unix timestamp of last pane output (empty on tmux 3.6+)
-	ContentSnippet string // last line of pane content (for activity detection fallback)
+	PaneID    string
+	Command   string
+	Cwd       string
+	IsAgent   bool
+	Title     string
+	Activity  int64  // unix timestamp of last pane output (empty on tmux 3.6+)
+	CursorPos string // "Y,X" cursor position for activity detection fallback
 }
 
 // SnapshotAllPanes queries all panes across all windows in the bay session.
@@ -587,7 +587,7 @@ type PaneInfo struct {
 func SnapshotAllPanes() map[int][]PaneInfo {
 	sep := "%%BAY%%"
 	out, err := run("list-panes", "-s", "-t", MainSession,
-		"-F", fmt.Sprintf("#{window_index}%s#{pane_id}%s#{pane_start_command}%s#{pane_activity}", sep, sep, sep))
+		"-F", fmt.Sprintf("#{window_index}%s#{pane_id}%s#{pane_start_command}%s#{pane_activity}%s#{cursor_y},#{cursor_x}", sep, sep, sep, sep))
 	if err != nil {
 		return nil
 	}
@@ -601,8 +601,8 @@ func SnapshotAllPanes() map[int][]PaneInfo {
 			continue
 		}
 
-		parts := strings.SplitN(line, sep, 4)
-		if len(parts) < 4 {
+		parts := strings.SplitN(line, sep, 5)
+		if len(parts) < 5 {
 			continue
 		}
 
@@ -613,6 +613,7 @@ func SnapshotAllPanes() map[int][]PaneInfo {
 		paneID := parts[1]
 		startCmd := parts[2]
 		activityStr := parts[3]
+		cursorPos := parts[4]
 
 		if paneID == topbarID {
 			continue
@@ -621,21 +622,12 @@ func SnapshotAllPanes() map[int][]PaneInfo {
 		isAgent := strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude")
 		activity, _ := strconv.ParseInt(activityStr, 10, 64)
 
-		var snippet string
-		if isAgent {
-			// Capture last line of pane content for activity detection
-			// (fallback when pane_activity is unavailable, e.g. tmux 3.6+)
-			if out, err := run("capture-pane", "-t", paneID, "-p", "-S", "-1"); err == nil {
-				snippet = strings.TrimSpace(out)
-			}
-		}
-
 		result[winIdx] = append(result[winIdx], PaneInfo{
-			PaneID:         paneID,
-			Command:        startCmd,
-			IsAgent:        isAgent,
-			Activity:       activity,
-			ContentSnippet: snippet,
+			PaneID:    paneID,
+			Command:   startCmd,
+			IsAgent:   isAgent,
+			Activity:  activity,
+			CursorPos: cursorPos,
 		})
 	}
 
