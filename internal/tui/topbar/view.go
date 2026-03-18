@@ -74,13 +74,16 @@ func (m Model) View() string {
 	// Row 2: sessions for active repo (or status line during rename/delete)
 	row2 := m.renderSessionRow()
 
-	// Row 3: session note (or transient status message)
-	row3 := m.renderNoteRow()
+	// Row 3: diff summary
+	row3 := m.renderDiffRow()
+
+	// Row 4: session note (or transient status message)
+	row4 := m.renderNoteRow()
 
 	// Write hints to file for tmux status bar
 	baytmux.WriteTopbarHints(m.renderHintBarPlain())
 
-	content := row1 + "\n" + row2 + "\n" + row3
+	content := row1 + "\n" + row2 + "\n" + row3 + "\n" + row4
 
 	// Choose border color based on focus state
 	var box lipgloss.Style
@@ -226,6 +229,39 @@ func (m Model) renderSessionRow() string {
 	}
 
 	return pad + strings.Join(tabs, " ")
+}
+
+func (m Model) renderDiffRow() string {
+	pad := "      "
+
+	// Hide during modal modes
+	switch m.mode {
+	case modeRename, modeConfirmDelete, modeEditNote, modeSettings, modeCreate, modeQuickSwitch, modeHelp, modeCleanup:
+		return pad
+	}
+
+	sessionName := m.selectedSessionName()
+	if sessionName == "" {
+		return pad
+	}
+
+	// Don't show when browsing repos row
+	if m.focused && m.focusRow == 0 {
+		return pad
+	}
+
+	cached := m.diffCache[sessionName]
+	if cached == nil {
+		return pad + styles.HelpBar.Render("...")
+	}
+	if cached.Clean {
+		return pad + styles.SuccessText.Render("✓ clean")
+	}
+
+	filePart := styles.NoteText.Render(fmt.Sprintf("±%d files", cached.Files))
+	insPart := styles.SuccessText.Render(fmt.Sprintf("+%d", cached.Insertions))
+	delPart := styles.ErrorText.Render(fmt.Sprintf("-%d", cached.Deletions))
+	return pad + filePart + "  " + insPart + " " + delPart
 }
 
 func (m Model) renderNoteRow() string {

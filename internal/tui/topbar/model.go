@@ -3,7 +3,10 @@ package topbar
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +37,19 @@ const (
 
 type clearStatusMsg struct{}
 type agentTickMsg struct{}
+
+type diffSummary struct {
+	Files      int
+	Insertions int
+	Deletions  int
+	Clean      bool
+	ComputedAt time.Time
+}
+
+type diffResultMsg struct {
+	SessionName string
+	Summary     diffSummary
+}
 
 func clearStatusAfter(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return clearStatusMsg{} })
@@ -87,6 +103,9 @@ type Model struct {
 
 	// Agent activity indicator: session name → "active" / "idle" / ""
 	agentStatus map[string]string
+
+	// Diff summary cache: session name → diff summary
+	diffCache map[string]*diffSummary
 }
 
 // New creates a new topbar model.
@@ -123,6 +142,7 @@ func newModel(cfg *config.Config) Model {
 		renameInput: ri,
 		noteInput:   ni,
 		switchInput: si,
+		diffCache:   make(map[string]*diffSummary),
 	}
 }
 
@@ -294,6 +314,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.doAutoActivate()
 
+	case diffResultMsg:
+		m.diffCache[msg.SessionName] = &msg.Summary
+		return m, nil
+
 	case agentTickMsg:
 		allPanes := baytmux.SnapshotAllPanes()
 		now := time.Now().Unix()
@@ -329,7 +353,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.agentStatus = status
-		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg { return agentTickMsg{} })
+
+		// Refresh diff for the currently displayed session
+		cmds := []tea.Cmd{tea.Tick(2 * time.Second, func(time.Time) tea.Msg { return agentTickMsg{} })}
+		if sessionName := m.selectedSessionName(); sessionName != "" {
+			cached := m.diffCache[sessionName]
+			if cached == nil || time.Since(cached.ComputedAt) > 10*time.Second {
+				// Find the session's working dir
+				for _, s := range m.sessions {
+					if s.Name == sessionName {
+						workDir := s.WorkingDir
+						cmds = append(cmds, fetchDiffCmd(sessionName, workDir))
+						break
+					}
+				}
+			}
+		}
+		return m, tea.Batch(cmds...)
 
 	case clearStatusMsg:
 		m.statusMsg = ""
@@ -1337,6 +1377,52 @@ func (m *Model) repoAgentStatus(repoName string) string {
 		return "idle"
 	}
 	return ""
+}
+
+// fetchDiffCmd runs git diff --shortstat asynchronously and returns a diffResultMsg.
+func fetchDiffCmd(sessionName, workDir string) tea.Cmd {
+	return func() tea.Msg {
+		// Unstaged changes
+		out1, _ := exec.Command("git", "-C", workDir, "diff", "--shortstat").Output()
+		f1, i1, d1 := parseShortstat(string(out1))
+
+		// Staged changes
+		out2, _ := exec.Command("git", "-C", workDir, "diff", "--cached", "--shortstat").Output()
+		f2, i2, d2 := parseShortstat(string(out2))
+
+		files := f1 + f2
+		ins := i1 + i2
+		del := d1 + d2
+
+		return diffResultMsg{
+			SessionName: sessionName,
+			Summary: diffSummary{
+				Files:      files,
+				Insertions: ins,
+				Deletions:  del,
+				Clean:      files == 0 && ins == 0 && del == 0,
+				ComputedAt: time.Now(),
+			},
+		}
+	}
+}
+
+var shortstatRe = regexp.MustCompile(`(\d+) file`)
+var insertionsRe = regexp.MustCompile(`(\d+) insertion`)
+var deletionsRe = regexp.MustCompile(`(\d+) deletion`)
+
+// parseShortstat parses git diff --shortstat output.
+func parseShortstat(output string) (files, ins, del int) {
+	if m := shortstatRe.FindStringSubmatch(output); len(m) > 1 {
+		files, _ = strconv.Atoi(m[1])
+	}
+	if m := insertionsRe.FindStringSubmatch(output); len(m) > 1 {
+		ins, _ = strconv.Atoi(m[1])
+	}
+	if m := deletionsRe.FindStringSubmatch(output); len(m) > 1 {
+		del, _ = strconv.Atoi(m[1])
+	}
+	return
 }
 
 // IsFocused returns whether the topbar is in focused mode.
