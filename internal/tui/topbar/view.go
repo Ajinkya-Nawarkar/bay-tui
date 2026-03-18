@@ -23,15 +23,27 @@ func (m Model) View() string {
 	for i, repo := range m.repos {
 		count := m.sessionsForRepo(repo.Name)
 		label := fmt.Sprintf("%s (%d)", repo.Name, count)
+
+		// Agent activity dot for this repo
+		dot := ""
+		if status := m.repoAgentStatus(repo.Name); status != "" {
+			switch status {
+			case "active":
+				dot = styles.AgentActive.Render("●") + " "
+			case "idle":
+				dot = styles.AgentIdle.Render("●") + " "
+			}
+		}
+
 		if i == m.activeRepoIdx && !m.plusSelected {
 			if m.focused && m.focusRow == 0 {
 				label = "\u25b6" + label + "\u25c0" // ▶name (N)◀
-				repoTabs = append(repoTabs, styles.RepoTabFocused.Render(label))
+				repoTabs = append(repoTabs, dot+styles.RepoTabFocused.Render(label))
 			} else {
-				repoTabs = append(repoTabs, styles.RepoTabActive.Render(label))
+				repoTabs = append(repoTabs, dot+styles.RepoTabActive.Render(label))
 			}
 		} else {
-			repoTabs = append(repoTabs, styles.RepoTab.Render(label))
+			repoTabs = append(repoTabs, dot+styles.RepoTab.Render(label))
 		}
 	}
 

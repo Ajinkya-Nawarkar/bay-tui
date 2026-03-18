@@ -1318,6 +1318,27 @@ func (m Model) updateCleanup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// repoAgentStatus returns the aggregate agent status for a repo.
+// "active" if any session has an active agent, "idle" if any has idle, "" otherwise.
+func (m *Model) repoAgentStatus(repoName string) string {
+	hasIdle := false
+	for _, s := range m.sessions {
+		if s.Repo != repoName {
+			continue
+		}
+		switch m.agentStatus[s.Name] {
+		case "active":
+			return "active"
+		case "idle":
+			hasIdle = true
+		}
+	}
+	if hasIdle {
+		return "idle"
+	}
+	return ""
+}
+
 // IsFocused returns whether the topbar is in focused mode.
 func (m *Model) IsFocused() bool {
 	return m.focused
