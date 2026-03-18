@@ -432,17 +432,20 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	run("bind-key", "-r", "Up", "select-pane", "-U")
 	run("bind-key", "-r", "Down", "select-pane", "-D")
 
-	// d/D for splits — read topbar pane ID at runtime so it works after moves.
-	run("bind-key", "-r", "d", "run-shell",
-		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' && %s", resizeTopbar))
-	run("bind-key", "-r", "D", "run-shell",
-		fmt.Sprintf("tmux split-window -v -c '#{pane_current_path}' && %s", resizeTopbar))
+	// d/D for splits — guard against topbar pane, same pattern as w.
+	run("bind-key", "-r", "d", "if-shell",
+		fmt.Sprintf("[ \"#{pane_id}\" != \"$(cat %s)\" ]", topbarIDFile),
+		fmt.Sprintf("run-shell 'tmux split-window -h -c \"#{pane_current_path}\" && %s'", resizeTopbar))
+	run("bind-key", "-r", "D", "if-shell",
+		fmt.Sprintf("[ \"#{pane_id}\" != \"$(cat %s)\" ]", topbarIDFile),
+		fmt.Sprintf("run-shell 'tmux split-window -v -c \"#{pane_current_path}\" && %s'", resizeTopbar))
 
-	// a for agent split — vertical split running bay agent wrapper
+	// a for agent split — guard against topbar pane, same pattern as w.
 	// bay agent generates a UUID, saves it to session YAML, then execs the configured agent.
 	// Auto-labels the pane with the agent command so the border shows it.
-	run("bind-key", "-r", "a", "run-shell",
-		fmt.Sprintf("tmux split-window -h -c '#{pane_current_path}' 'bash -c \"bay agent\"' && tmux select-pane -T %s && %s", agentCmd, resizeTopbar))
+	run("bind-key", "-r", "a", "if-shell",
+		fmt.Sprintf("[ \"#{pane_id}\" != \"$(cat %s)\" ]", topbarIDFile),
+		fmt.Sprintf("run-shell 'tmux split-window -h -c \"#{pane_current_path}\" '\"'\"'bash -c \"bay agent\"'\"'\"' && tmux select-pane -T %s && %s'", agentCmd, resizeTopbar))
 
 	// w to close pane — guard by comparing pane_id against topbar's persisted ID.
 	run("bind-key", "-r", "w", "if-shell",
