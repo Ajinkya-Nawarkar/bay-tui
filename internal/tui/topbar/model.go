@@ -103,6 +103,8 @@ type Model struct {
 
 	// Agent activity indicator: session name → "active" / "idle" / ""
 	agentStatus map[string]string
+	// Previous pane content snippets for activity detection (paneID → last content)
+	prevSnippets map[string]string
 
 	// Diff summary cache: session name → diff summary
 	diffCache map[string]*diffSummary
@@ -322,6 +324,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		allPanes := baytmux.SnapshotAllPanes()
 		now := time.Now().Unix()
 		status := make(map[string]string)
+		newSnippets := make(map[string]string)
 
 		for _, s := range m.sessions {
 			if s.TmuxWindow == 0 {
@@ -338,8 +341,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					continue
 				}
 				hasAgent = true
-				if now-p.Activity <= 3 {
-					isActive = true
+				newSnippets[p.PaneID] = p.ContentSnippet
+
+				// Primary: use pane_activity timestamp if available
+				if p.Activity > 0 {
+					if now-p.Activity <= 3 {
+						isActive = true
+					}
+				} else if p.ContentSnippet != "" {
+					// Fallback: compare content with previous tick
+					if prev, ok := m.prevSnippets[p.PaneID]; ok {
+						if p.ContentSnippet != prev {
+							isActive = true
+						}
+					}
+				}
+				if isActive {
 					break
 				}
 			}
@@ -353,6 +370,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.agentStatus = status
+		m.prevSnippets = newSnippets
 
 		// Refresh diff for the currently displayed session
 		cmds := []tea.Cmd{tea.Tick(2 * time.Second, func(time.Time) tea.Msg { return agentTickMsg{} })}

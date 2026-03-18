@@ -573,12 +573,13 @@ func CaptureAllDevPanes(windowIndex, lines int) (map[string]string, error) {
 
 // PaneInfo holds information about a single tmux pane.
 type PaneInfo struct {
-	PaneID   string
-	Command  string
-	Cwd      string
-	IsAgent  bool
-	Title    string
-	Activity int64 // unix timestamp of last pane output
+	PaneID         string
+	Command        string
+	Cwd            string
+	IsAgent        bool
+	Title          string
+	Activity       int64  // unix timestamp of last pane output (empty on tmux 3.6+)
+	ContentSnippet string // last line of pane content (for activity detection fallback)
 }
 
 // SnapshotAllPanes queries all panes across all windows in the bay session.
@@ -620,11 +621,21 @@ func SnapshotAllPanes() map[int][]PaneInfo {
 		isAgent := strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude")
 		activity, _ := strconv.ParseInt(activityStr, 10, 64)
 
+		var snippet string
+		if isAgent {
+			// Capture last line of pane content for activity detection
+			// (fallback when pane_activity is unavailable, e.g. tmux 3.6+)
+			if out, err := run("capture-pane", "-t", paneID, "-p", "-S", "-1"); err == nil {
+				snippet = strings.TrimSpace(out)
+			}
+		}
+
 		result[winIdx] = append(result[winIdx], PaneInfo{
-			PaneID:   paneID,
-			Command:  startCmd,
-			IsAgent:  isAgent,
-			Activity: activity,
+			PaneID:         paneID,
+			Command:        startCmd,
+			IsAgent:        isAgent,
+			Activity:       activity,
+			ContentSnippet: snippet,
 		})
 	}
 
