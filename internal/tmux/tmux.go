@@ -172,9 +172,15 @@ func InitTopbarPaneID() {
 }
 
 // TopbarPaneTarget returns a target string for the topbar pane.
+// Falls back to the persisted file so subprocesses (e.g. bay internal ensure-pane)
+// can identify the topbar without having called InitOrAttach.
 func TopbarPaneTarget() string {
 	if topbarPaneID != "" {
 		return topbarPaneID
+	}
+	if id := loadTopbarPaneID(); id != "" {
+		topbarPaneID = id
+		return id
 	}
 	return MainSession + ":0.0"
 }
