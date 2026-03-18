@@ -34,15 +34,16 @@ type CancelMsg struct{}
 
 // Model is the create session flow state.
 type Model struct {
-	step         createStep
-	repos        []scanner.Repo
-	repoCursor   int
-	useWorktree  bool
-	branchInput  textinput.Model
-	nameInput    textinput.Model
-	selectedRepo scanner.Repo
-	err          error
-	created      *session.Session
+	step              createStep
+	repos             []scanner.Repo
+	repoCursor        int
+	useWorktree       bool
+	branchInput       textinput.Model
+	nameInput         textinput.Model
+	selectedRepo      scanner.Repo
+	reposWithSessions map[string]bool
+	err               error
+	created           *session.Session
 }
 
 // New creates a new session creation flow.
@@ -64,6 +65,14 @@ func New(repos []scanner.Repo, preselectedRepo string) Model {
 		nameInput:   ni,
 	}
 
+	return m
+}
+
+// NewWithSessionInfo creates a new session creation flow with session indicator info.
+func NewWithSessionInfo(repos []scanner.Repo, reposWithSessions map[string]bool, preselectedRepo string) Model {
+	m := New(repos, "")
+	m.reposWithSessions = reposWithSessions
+
 	if preselectedRepo != "" {
 		for i, r := range repos {
 			if r.Name == preselectedRepo {
@@ -76,6 +85,14 @@ func New(repos []scanner.Repo, preselectedRepo string) Model {
 	}
 
 	return m
+}
+
+// HasSessions returns whether a repo has existing sessions.
+func (m *Model) HasSessions(repoName string) bool {
+	if m.reposWithSessions == nil {
+		return false
+	}
+	return m.reposWithSessions[repoName]
 }
 
 // Init starts the model.

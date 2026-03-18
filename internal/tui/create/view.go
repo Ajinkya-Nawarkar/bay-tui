@@ -36,11 +36,15 @@ func (m Model) viewPickRepo() string {
 
 	for i, repo := range m.repos {
 		cursor := "  "
+		dot := ""
+		if m.HasSessions(repo.Name) {
+			dot = " ●"
+		}
 		if i == m.repoCursor {
 			cursor = "> "
-			b.WriteString(styles.SelectedLine.Render(cursor + repo.Name))
+			b.WriteString(styles.SelectedLine.Render(cursor + repo.Name + dot))
 		} else {
-			b.WriteString(styles.SessionName.Render(cursor + repo.Name))
+			b.WriteString(styles.SessionName.Render(cursor + repo.Name + dot))
 		}
 		b.WriteString("\n")
 	}

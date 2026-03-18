@@ -20,23 +20,42 @@ func (m Model) View() string {
 	// Row 1: "bay" title + repo tabs
 	var repoTabs []string
 	for i, repo := range m.repos {
-		if i == m.activeRepoIdx {
-			name := repo.Name
+		count := m.sessionsForRepo(repo.Name)
+		label := fmt.Sprintf("%s (%d)", repo.Name, count)
+		if i == m.activeRepoIdx && !m.plusSelected {
 			if m.focused && m.focusRow == 0 {
-				name = "\u25b6" + name + "\u25c0" // ▶name◀
-				repoTabs = append(repoTabs, styles.RepoTabFocused.Render(name))
+				label = "\u25b6" + label + "\u25c0" // ▶name (N)◀
+				repoTabs = append(repoTabs, styles.RepoTabFocused.Render(label))
 			} else {
-				repoTabs = append(repoTabs, styles.RepoTabActive.Render(name))
+				repoTabs = append(repoTabs, styles.RepoTabActive.Render(label))
 			}
 		} else {
-			repoTabs = append(repoTabs, styles.RepoTab.Render(repo.Name))
+			repoTabs = append(repoTabs, styles.RepoTab.Render(label))
 		}
+	}
+
+	// Append ＋ button
+	plusLabel := "＋"
+	if m.focused && m.focusRow == 0 && m.plusSelected {
+		plusLabel = "\u25b6＋\u25c0" // ▶＋◀
+		repoTabs = append(repoTabs, styles.RepoTabFocused.Render(plusLabel))
+	} else {
+		repoTabs = append(repoTabs, styles.RepoTab.Render(plusLabel))
 	}
 
 	row1 := styles.Title.Render("bay") + "   " + strings.Join(repoTabs, " \u2502 ")
 
 	if m.mode == modeSettings {
 		row1 = styles.Title.Render("bay") + "   " + styles.RepoTabActive.Render("⚙ Settings")
+	}
+	if m.mode == modeCreate {
+		createLabel := "creating new session..."
+		if m.createPreselected != "" {
+			createLabel = fmt.Sprintf("creating session for %s...", m.createPreselected)
+		}
+		row1 = styles.Title.Render("bay") + "   " + strings.Join(repoTabs, " \u2502 ")
+		// Row 2 and 3 handled below
+		_ = createLabel
 	}
 
 	// Row 2: sessions for active repo (or status line during rename/delete)
@@ -87,9 +106,19 @@ func (m Model) renderSessionRow() string {
 	if m.mode == modeSettings {
 		return pad + styles.HelpBar.Render("Editing ~/.bay/config.yaml")
 	}
+	if m.mode == modeCreate {
+		label := "Creating new session..."
+		if m.createPreselected != "" {
+			label = fmt.Sprintf("Creating session for %s...", m.createPreselected)
+		}
+		return pad + styles.HelpBar.Render(label)
+	}
 
 	sessions := m.activeRepoSessions()
 	if len(sessions) == 0 {
+		if m.plusSelected {
+			return pad + styles.NoSessions.Render("press enter to create a session")
+		}
 		return pad + styles.NoSessions.Render("no sessions")
 	}
 
@@ -136,6 +165,9 @@ func (m Model) renderNoteRow() string {
 	if m.mode == modeSettings {
 		return pad + styles.HelpBar.Render("Save & close editor to return")
 	}
+	if m.mode == modeCreate {
+		return pad + styles.HelpBar.Render("Close wizard to return")
+	}
 	// Transient status messages take priority over note display
 	if m.statusMsg != "" {
 		return pad + styles.NoSessions.Render(m.statusMsg)
@@ -168,6 +200,9 @@ func (m Model) renderHintBarPlain() string {
 	}
 	if m.mode == modeSettings {
 		return tmuxHint("editing", "close editor to return")
+	}
+	if m.mode == modeCreate {
+		return tmuxHint("creating", "close wizard to return")
 	}
 
 	if m.focused {

@@ -4,8 +4,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/config"
-	"bay/internal/scanner"
-	"bay/internal/tui/create"
 	tmemory "bay/internal/tui/memory"
 	"bay/internal/tui/setup"
 	"bay/internal/tui/topbar"
@@ -16,7 +14,6 @@ type screen int
 const (
 	screenTopbar screen = iota
 	screenSetup
-	screenCreate
 	screenMemory
 )
 
@@ -25,7 +22,6 @@ type App struct {
 	screen      screen
 	topbar      topbar.Model
 	setupModel  setup.Model
-	createModel create.Model
 	memoryModel tmemory.Model
 	cfg         *config.Config
 	firstRun    bool
@@ -75,29 +71,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.topbar = topbar.New(a.cfg)
 		return a, nil
 
-	case topbar.SwitchToCreateMsg:
-		repos := scanner.Scan(a.cfg.ScanDirs)
-		a.createModel = create.New(repos, msg.PreselectedRepo)
-		a.screen = screenCreate
-		return a, a.createModel.Init()
-
 	case topbar.SwitchToSetupMsg:
 		a.setupModel = setup.New()
 		a.screen = screenSetup
 		return a, a.setupModel.Init()
-
-	case create.DoneMsg:
-		a.screen = screenTopbar
-		a.topbar.Refresh()
-		if msg.Session != nil {
-			a.topbar.ActivateSession(msg.Session.Name)
-			a.topbar.SetStatus("Created '" + msg.Session.Name + "'")
-		}
-		return a, tea.ClearScreen
-
-	case create.CancelMsg:
-		a.screen = screenTopbar
-		return a, nil
 
 	case topbar.SwitchToMemoryMsg:
 		a.memoryModel = tmemory.New(msg.SessionName)
@@ -122,17 +99,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.setupModel = m.(setup.Model)
 		return a, cmd
 
-	case screenCreate:
-		// Handle async create messages
-		switch msg.(type) {
-		case create.DoneMsg, create.CancelMsg:
-			// Already handled above
-		default:
-			m, cmd := a.createModel.Update(msg)
-			a.createModel = m.(create.Model)
-			return a, cmd
-		}
-
 	case screenMemory:
 		switch msg.(type) {
 		case tmemory.BackMsg:
@@ -152,8 +118,6 @@ func (a App) View() string {
 	switch a.screen {
 	case screenSetup:
 		return a.setupModel.View()
-	case screenCreate:
-		return a.createModel.View()
 	case screenMemory:
 		return a.memoryModel.View()
 	default:

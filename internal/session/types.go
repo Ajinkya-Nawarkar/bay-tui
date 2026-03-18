@@ -22,6 +22,7 @@ type Session struct {
 	IsWorktree     bool      `yaml:"is_worktree"`
 	WorktreeBranch string    `yaml:"worktree_branch,omitempty"`
 	CreatedAt      time.Time `yaml:"created_at"`
+	LastActiveAt   time.Time `yaml:"last_active_at,omitempty"`
 	TmuxWindow     int       `yaml:"tmux_window,omitempty"`
 	Panes          []Pane    `yaml:"panes"`
 	Note           string    `yaml:"note,omitempty"`

@@ -3,6 +3,7 @@ package topbar
 import (
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -24,12 +25,8 @@ const (
 	modeConfirmDelete
 	modeEditNote
 	modeSettings
+	modeCreate
 )
-
-// SwitchToCreateMsg tells the app to switch to create screen.
-type SwitchToCreateMsg struct {
-	PreselectedRepo string
-}
 
 type clearStatusMsg struct{}
 
@@ -48,12 +45,14 @@ type SwitchToMemoryMsg struct {
 // Model is the topbar screen state.
 type Model struct {
 	cfg                *config.Config
-	repos              []scanner.Repo
+	allRepos           []scanner.Repo // unfiltered — all scanned repos
+	repos              []scanner.Repo // filtered — only repos with sessions
 	sessions           []*session.Session
 	focused            bool
 	focusRow           int // 0 = repos, 1 = sessions
 	activeRepoIdx      int
 	selectedSessionIdx int
+	plusSelected        bool
 	mode               mode
 	renameInput        textinput.Model
 	noteInput          textinput.Model
@@ -63,7 +62,9 @@ type Model struct {
 	activeSession      string
 	activeWindowIdx    int
 	settingsWindowIdx  int
+	createWindowIdx    int
 	prevWindowIdx      int
+	createPreselected  string
 	statusMsg          string
 	err                error
 	width              int
@@ -105,19 +106,84 @@ func newModel(cfg *config.Config) Model {
 type autoActivateMsg struct{}
 
 // refresh reloads repos, sessions from disk.
+// Repos are filtered to only those with at least one session,
+// then sorted by most recent session activity.
 func (m *Model) refresh() {
-	m.repos = scanner.Scan(m.cfg.ScanDirs)
+	m.allRepos = scanner.Scan(m.cfg.ScanDirs)
 	m.sessions, _ = session.List()
 
-	if m.activeRepoIdx >= len(m.repos) {
+	// Build set of repo names that have sessions
+	repoHasSessions := make(map[string]bool)
+	for _, s := range m.sessions {
+		repoHasSessions[s.Repo] = true
+	}
+
+	// Filter repos to only those with sessions
+	var filtered []scanner.Repo
+	for _, r := range m.allRepos {
+		if repoHasSessions[r.Name] {
+			filtered = append(filtered, r)
+		}
+	}
+
+	// Sort filtered repos by most recent session activity (descending)
+	sort.Slice(filtered, func(i, j int) bool {
+		ti := m.repoLastActive(filtered[i].Name)
+		tj := m.repoLastActive(filtered[j].Name)
+		return ti.After(tj)
+	})
+
+	// Preserve active repo selection across refresh
+	prevRepoName := ""
+	if m.activeRepoIdx < len(m.repos) && len(m.repos) > 0 {
+		prevRepoName = m.repos[m.activeRepoIdx].Name
+	}
+
+	m.repos = filtered
+
+	// Try to keep the same repo selected
+	m.activeRepoIdx = 0
+	m.plusSelected = false
+	if prevRepoName != "" {
+		for i, r := range m.repos {
+			if r.Name == prevRepoName {
+				m.activeRepoIdx = i
+				break
+			}
+		}
+	}
+
+	if len(m.repos) == 0 {
+		m.plusSelected = true
+	}
+
+	if m.activeRepoIdx >= len(m.repos) && len(m.repos) > 0 {
 		m.activeRepoIdx = 0
 	}
+}
+
+// repoLastActive returns the most recent LastActiveAt (or CreatedAt) among sessions for a repo.
+func (m *Model) repoLastActive(repoName string) time.Time {
+	var latest time.Time
+	for _, s := range m.sessions {
+		if s.Repo != repoName {
+			continue
+		}
+		t := s.LastActiveAt
+		if t.IsZero() {
+			t = s.CreatedAt
+		}
+		if t.After(latest) {
+			latest = t
+		}
+	}
+	return latest
 }
 
 // activeRepoSessions returns sessions belonging to the active repo.
 // Stale sessions (missing working directory) are included for visibility.
 func (m *Model) activeRepoSessions() []*session.Session {
-	if len(m.repos) == 0 {
+	if len(m.repos) == 0 || m.plusSelected {
 		return nil
 	}
 	repoName := m.repos[m.activeRepoIdx].Name
@@ -128,6 +194,17 @@ func (m *Model) activeRepoSessions() []*session.Session {
 		}
 	}
 	return result
+}
+
+// sessionsForRepo returns the count of sessions for a given repo name.
+func (m *Model) sessionsForRepo(repoName string) int {
+	count := 0
+	for _, s := range m.sessions {
+		if s.Repo == repoName {
+			count++
+		}
+	}
+	return count
 }
 
 // isSessionStale returns true if the session's working directory no longer exists.
@@ -150,7 +227,7 @@ func (m *Model) selectedSessionName() string {
 
 // activeRepoName returns the name of the currently active repo.
 func (m *Model) activeRepoName() string {
-	if len(m.repos) == 0 {
+	if len(m.repos) == 0 || m.plusSelected {
 		return ""
 	}
 	return m.repos[m.activeRepoIdx].Name
@@ -172,6 +249,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				for i, r := range m.repos {
 					if r.Name == s.Repo {
 						m.activeRepoIdx = i
+						m.plusSelected = false
 						break
 					}
 				}
@@ -181,6 +259,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Fallback: activate first session in current repo
 		if sessions := m.activeRepoSessions(); len(sessions) > 0 {
 			return m.activateSession(sessions[0])
+		}
+		// No sessions at all — show ＋ focused
+		if len(m.sessions) == 0 {
+			m.focused = true
+			m.focusRow = 0
+			m.plusSelected = true
 		}
 		return m, nil
 
@@ -233,6 +317,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeSettings {
 			return m.updateSettings(msg)
 		}
+		if m.mode == modeCreate {
+			return m.updateCreate(msg)
+		}
 
 		key := msg.String()
 
@@ -272,7 +359,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case key == "r":
 				return m.cycleRepo(1)
 			case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
-				return m.jumpToSession(int(key[0]-'1'))
+				return m.jumpToSession(int(key[0] - '1'))
 			}
 		}
 
@@ -298,7 +385,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = ""
 			return m, unfocusCmd
 		case "down":
-			if m.focusRow == 0 {
+			if m.focusRow == 0 && !m.plusSelected {
 				if sessions := m.activeRepoSessions(); len(sessions) > 0 {
 					m.focusRow = 1
 				}
@@ -320,17 +407,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.cycleSelectedSession(1)
 		case "enter":
+			if m.focusRow == 0 && m.plusSelected {
+				return m.startCreate("")
+			}
 			if m.focusRow == 1 {
 				return m.activateSelectedSession()
 			}
 			return m.activateCurrentSession()
 		case "n":
+			if m.focusRow == 0 {
+				// From repo row: full repo picker
+				return m.startCreate("")
+			}
+			// From session row: pre-select current repo
 			if len(m.activeRepoSessions()) >= 9 {
 				m.statusMsg = "Max 9 sessions per repo"
 				return m, clearStatusAfter(2 * time.Second)
 			}
-			repo := m.activeRepoName()
-			return m, func() tea.Msg { return SwitchToCreateMsg{PreselectedRepo: repo} }
+			return m.startCreate(m.activeRepoName())
 		case "m":
 			if m.focusRow == 0 {
 				m.statusMsg = "Select a session first"
@@ -400,10 +494,41 @@ func (m Model) jumpToSession(idx int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) cycleRepo(dir int) (tea.Model, tea.Cmd) {
-	if len(m.repos) == 0 {
-		return m, nil
+	totalSlots := len(m.repos) + 1 // repos + ＋ button
+
+	if m.plusSelected {
+		if dir > 0 {
+			// Wrap from ＋ to first repo (or stay on ＋ if no repos)
+			if len(m.repos) > 0 {
+				m.plusSelected = false
+				m.activeRepoIdx = 0
+			}
+		} else {
+			// Left from ＋ goes to last repo
+			if len(m.repos) > 0 {
+				m.plusSelected = false
+				m.activeRepoIdx = len(m.repos) - 1
+			}
+		}
+	} else {
+		if dir > 0 {
+			if m.activeRepoIdx == len(m.repos)-1 {
+				// Right from last repo goes to ＋
+				m.plusSelected = true
+			} else {
+				m.activeRepoIdx++
+			}
+		} else {
+			if m.activeRepoIdx == 0 {
+				// Left from first repo goes to ＋
+				m.plusSelected = true
+			} else {
+				m.activeRepoIdx--
+			}
+		}
 	}
-	m.activeRepoIdx = (m.activeRepoIdx + dir + len(m.repos)) % len(m.repos)
+
+	_ = totalSlots // suppress unused
 	m.selectedSessionIdx = 0
 	m.statusMsg = ""
 	return m, nil
@@ -455,6 +580,11 @@ func (m Model) activateSession(s *session.Session) (tea.Model, tea.Cmd) {
 	m.focused = false
 	m.focusRow = 0
 	m.statusMsg = ""
+
+	// Update LastActiveAt timestamp
+	s.LastActiveAt = time.Now()
+	session.Save(s)
+
 	session.SaveActiveSession(s.Name)
 	m.refresh()
 	windowIdx := m.activeWindowIdx
@@ -815,6 +945,134 @@ func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		},
 		clearStatusAfter(2*time.Second),
 	)
+}
+
+// startCreate launches the create flow in a dev pane (mirrors startSettings pattern).
+func (m Model) startCreate(preselectedRepo string) (tea.Model, tea.Cmd) {
+	m.prevWindowIdx = m.activeWindowIdx
+	m.createPreselected = preselectedRepo
+
+	newWindowIdx, err := baytmux.CreateSessionWindow(config.BayDir())
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(3 * time.Second)
+	}
+
+	if err := baytmux.MoveTopbarToWindow(newWindowIdx); err != nil {
+		baytmux.KillWindow(newWindowIdx)
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(3 * time.Second)
+	}
+
+	if err := baytmux.SwitchToWindow(newWindowIdx); err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(3 * time.Second)
+	}
+
+	// Build the shell command to run in the dev pane
+	bayBin, err := os.Executable()
+	if err != nil {
+		bayBin = "bay"
+	}
+	topbarTarget := baytmux.TopbarPaneTarget()
+
+	repoFlag := ""
+	if preselectedRepo != "" {
+		repoFlag = " --repo=" + preselectedRepo
+	}
+
+	shellCmd := fmt.Sprintf("%s internal create%s; if [ $? -eq 0 ]; then tmux send-keys -t %s c; else tmux send-keys -t %s C; fi; tmux select-pane -t %s; exit",
+		bayBin, repoFlag, topbarTarget, topbarTarget, topbarTarget)
+	baytmux.SendToDevPane(newWindowIdx, shellCmd)
+
+	m.mode = modeCreate
+	m.createWindowIdx = newWindowIdx
+	m.focused = false
+
+	windowIdx := newWindowIdx
+	return m, func() tea.Msg {
+		baytmux.FocusDevPane(windowIdx)
+		return tea.ClearScreen()
+	}
+}
+
+func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "c":
+		// Success — session was created
+		m.mode = modeNormal
+
+		baytmux.BreakTopbarToOwnWindow()
+		baytmux.KillWindow(m.createWindowIdx)
+
+		// Move topbar back
+		if m.prevWindowIdx > 0 && baytmux.WindowExists(m.prevWindowIdx) {
+			baytmux.MoveTopbarToWindow(m.prevWindowIdx)
+			baytmux.SwitchToWindow(m.prevWindowIdx)
+		}
+
+		// Read created session name and activate it
+		createdName := session.LoadCreatedSession()
+		session.ClearCreatedSession()
+		m.refresh()
+
+		if createdName != "" {
+			if s, err := session.Load(createdName); err == nil {
+				// Switch to the new session's repo tab
+				for i, r := range m.repos {
+					if r.Name == s.Repo {
+						m.activeRepoIdx = i
+						m.plusSelected = false
+						break
+					}
+				}
+				m2, cmd := m.activateSession(s)
+				if tm, ok := m2.(Model); ok {
+					tm.statusMsg = fmt.Sprintf("Created '%s'", createdName)
+					return tm, tea.Batch(cmd, clearStatusAfter(2*time.Second))
+				}
+				return m2, cmd
+			}
+		}
+
+		m.statusMsg = "Session created"
+		m.focused = true
+		windowIdx := m.prevWindowIdx
+		return m, tea.Batch(
+			func() tea.Msg {
+				baytmux.FocusDevPane(windowIdx)
+				return tea.ClearScreen()
+			},
+			clearStatusAfter(2*time.Second),
+		)
+
+	case "C":
+		// Cancel — user escaped the wizard
+		m.mode = modeNormal
+
+		baytmux.BreakTopbarToOwnWindow()
+		baytmux.KillWindow(m.createWindowIdx)
+
+		// Move topbar back
+		if m.prevWindowIdx > 0 && baytmux.WindowExists(m.prevWindowIdx) {
+			baytmux.MoveTopbarToWindow(m.prevWindowIdx)
+			baytmux.SwitchToWindow(m.prevWindowIdx)
+		}
+
+		session.ClearCreatedSession()
+		m.refresh()
+		m.focused = true
+
+		windowIdx := m.prevWindowIdx
+		return m, func() tea.Msg {
+			baytmux.FocusDevPane(windowIdx)
+			return tea.ClearScreen()
+		}
+	}
+
+	return m, nil
 }
 
 // IsFocused returns whether the topbar is in focused mode.

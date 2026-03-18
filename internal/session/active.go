@@ -51,6 +51,29 @@ func LoadActiveSession() string {
 	return strings.TrimSpace(string(data))
 }
 
+func createdSessionPath() string {
+	return filepath.Join(config.BayDir(), ".created-session")
+}
+
+// SaveCreatedSession persists the name of a just-created session to disk.
+func SaveCreatedSession(name string) {
+	os.WriteFile(createdSessionPath(), []byte(name), 0644)
+}
+
+// LoadCreatedSession reads the created session name from disk.
+func LoadCreatedSession() string {
+	data, err := os.ReadFile(createdSessionPath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// ClearCreatedSession removes the created-session marker file.
+func ClearCreatedSession() {
+	os.Remove(createdSessionPath())
+}
+
 // currentWindowIndex returns the active tmux window index.
 func currentWindowIndex() (int, error) {
 	cmd := exec.Command("tmux", "display-message", "-p", "#{window_index}")
