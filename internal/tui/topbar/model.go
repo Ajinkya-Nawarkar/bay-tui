@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -26,9 +27,13 @@ const (
 	modeEditNote
 	modeSettings
 	modeCreate
+	modeQuickSwitch
+	modeCleanup
+	modeHelp
 )
 
 type clearStatusMsg struct{}
+type agentTickMsg struct{}
 
 func clearStatusAfter(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return clearStatusMsg{} })
@@ -69,6 +74,19 @@ type Model struct {
 	err                error
 	width              int
 	height             int
+
+	// Quick-switch state
+	switchInput    textinput.Model
+	switchMatches  []*session.Session
+	switchSelected int
+
+	// Cleanup state
+	cleanupSessions []*session.Session
+	cleanupChecked  []bool
+	cleanupCursor   int
+
+	// Agent activity indicator: session name → "active" / "idle" / ""
+	agentStatus map[string]string
 }
 
 // New creates a new topbar model.
@@ -95,10 +113,16 @@ func newModel(cfg *config.Config) Model {
 	ni.CharLimit = 200
 	ni.Width = 60
 
+	si := textinput.New()
+	si.Placeholder = "search sessions..."
+	si.CharLimit = 100
+	si.Width = 40
+
 	return Model{
 		cfg:         cfg,
 		renameInput: ri,
 		noteInput:   ni,
+		switchInput: si,
 	}
 }
 
@@ -235,38 +259,77 @@ func (m *Model) activeRepoName() string {
 
 // Init is the Bubbletea init function.
 func (m Model) Init() tea.Cmd {
-	return func() tea.Msg { return autoActivateMsg{} }
+	return tea.Batch(
+		func() tea.Msg { return autoActivateMsg{} },
+		tea.Tick(2*time.Second, func(time.Time) tea.Msg { return agentTickMsg{} }),
+	)
 }
 
 // Update handles messages for the topbar.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case autoActivateMsg:
-		// Restore last active session if available
-		if lastActive := session.LoadActiveSession(); lastActive != "" {
-			if s, err := session.Load(lastActive); err == nil {
-				// Switch to the correct repo tab
-				for i, r := range m.repos {
-					if r.Name == s.Repo {
-						m.activeRepoIdx = i
-						m.plusSelected = false
-						break
-					}
-				}
-				return m.activateSession(s)
+		// Check for stale sessions (older than 30 days)
+		staleCutoff := time.Now().AddDate(0, 0, -30)
+		var staleSessions []*session.Session
+		for _, s := range m.sessions {
+			t := s.LastActiveAt
+			if t.IsZero() {
+				t = s.CreatedAt
+			}
+			if t.Before(staleCutoff) {
+				staleSessions = append(staleSessions, s)
 			}
 		}
-		// Fallback: activate first session in current repo
-		if sessions := m.activeRepoSessions(); len(sessions) > 0 {
-			return m.activateSession(sessions[0])
-		}
-		// No sessions at all — show ＋ focused
-		if len(m.sessions) == 0 {
+		if len(staleSessions) > 0 {
+			m.cleanupSessions = staleSessions
+			m.cleanupChecked = make([]bool, len(staleSessions))
+			for i := range m.cleanupChecked {
+				m.cleanupChecked[i] = true
+			}
+			m.cleanupCursor = 0
+			m.mode = modeCleanup
 			m.focused = true
-			m.focusRow = 0
-			m.plusSelected = true
+			return m, nil
 		}
-		return m, nil
+		return m.doAutoActivate()
+
+	case agentTickMsg:
+		allPanes := baytmux.SnapshotAllPanes()
+		now := time.Now().Unix()
+		status := make(map[string]string)
+
+		for _, s := range m.sessions {
+			if s.TmuxWindow == 0 {
+				continue
+			}
+			panes, ok := allPanes[s.TmuxWindow]
+			if !ok {
+				continue
+			}
+			hasAgent := false
+			isActive := false
+			for _, p := range panes {
+				if !p.IsAgent {
+					continue
+				}
+				hasAgent = true
+				if now-p.Activity <= 3 {
+					isActive = true
+					break
+				}
+			}
+			if hasAgent {
+				if isActive {
+					status[s.Name] = "active"
+				} else {
+					status[s.Name] = "idle"
+				}
+			}
+		}
+
+		m.agentStatus = status
+		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg { return agentTickMsg{} })
 
 	case clearStatusMsg:
 		m.statusMsg = ""
@@ -319,6 +382,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.mode == modeCreate {
 			return m.updateCreate(msg)
+		}
+		if m.mode == modeQuickSwitch {
+			return m.updateQuickSwitch(msg)
+		}
+		if m.mode == modeCleanup {
+			return m.updateCleanup(msg)
+		}
+		if m.mode == modeHelp {
+			m.mode = modeNormal
+			return m, nil
 		}
 
 		key := msg.String()
@@ -456,6 +529,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.startEditNote()
 		case "S":
 			return m.startSettings()
+		case "/":
+			return m.startQuickSwitch()
+		case "?":
+			m.mode = modeHelp
+			return m, nil
 		}
 	}
 
@@ -1072,6 +1150,171 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	return m, nil
+}
+
+// doAutoActivate performs the standard auto-activation logic (extracted for reuse).
+func (m Model) doAutoActivate() (tea.Model, tea.Cmd) {
+	// Restore last active session if available
+	if lastActive := session.LoadActiveSession(); lastActive != "" {
+		if s, err := session.Load(lastActive); err == nil {
+			for i, r := range m.repos {
+				if r.Name == s.Repo {
+					m.activeRepoIdx = i
+					m.plusSelected = false
+					break
+				}
+			}
+			return m.activateSession(s)
+		}
+	}
+	// Fallback: activate first session in current repo
+	if sessions := m.activeRepoSessions(); len(sessions) > 0 {
+		return m.activateSession(sessions[0])
+	}
+	// No sessions at all — show ＋ focused
+	if len(m.sessions) == 0 {
+		m.focused = true
+		m.focusRow = 0
+		m.plusSelected = true
+	}
+	return m, nil
+}
+
+// --- Quick-Switch ---
+
+func (m Model) startQuickSwitch() (tea.Model, tea.Cmd) {
+	m.mode = modeQuickSwitch
+	m.switchInput.SetValue("")
+	m.switchInput.Focus()
+	m.filterSwitchMatches("")
+	return m, textinput.Blink
+}
+
+func (m *Model) filterSwitchMatches(query string) {
+	query = strings.ToLower(query)
+	var matches []*session.Session
+	for _, s := range m.sessions {
+		if query == "" || strings.Contains(strings.ToLower(s.Name), query) || strings.Contains(strings.ToLower(s.Repo), query) {
+			matches = append(matches, s)
+		}
+	}
+	m.switchMatches = matches
+	m.switchSelected = 0
+}
+
+func (m Model) updateQuickSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode = modeNormal
+		return m, nil
+	case "enter":
+		if m.switchSelected < len(m.switchMatches) {
+			s := m.switchMatches[m.switchSelected]
+			// Switch to the correct repo tab
+			for i, r := range m.repos {
+				if r.Name == s.Repo {
+					m.activeRepoIdx = i
+					m.plusSelected = false
+					break
+				}
+			}
+			m.mode = modeNormal
+			return m.activateSession(s)
+		}
+		return m, nil
+	case "up":
+		if m.switchSelected > 0 {
+			m.switchSelected--
+		}
+		return m, nil
+	case "down":
+		if m.switchSelected < len(m.switchMatches)-1 {
+			m.switchSelected++
+		}
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.switchInput, cmd = m.switchInput.Update(msg)
+		m.filterSwitchMatches(m.switchInput.Value())
+		return m, cmd
+	}
+}
+
+// --- Cleanup ---
+
+func (m Model) updateCleanup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode = modeNormal
+		m.cleanupSessions = nil
+		return m.doAutoActivate()
+	case " ":
+		if m.cleanupCursor < len(m.cleanupChecked) {
+			m.cleanupChecked[m.cleanupCursor] = !m.cleanupChecked[m.cleanupCursor]
+		}
+		return m, nil
+	case "a":
+		allChecked := true
+		for _, c := range m.cleanupChecked {
+			if !c {
+				allChecked = false
+				break
+			}
+		}
+		for i := range m.cleanupChecked {
+			m.cleanupChecked[i] = !allChecked
+		}
+		return m, nil
+	case "up", "k":
+		if m.cleanupCursor > 0 {
+			m.cleanupCursor--
+		}
+		return m, nil
+	case "down", "j":
+		if m.cleanupCursor < len(m.cleanupSessions)-1 {
+			m.cleanupCursor++
+		}
+		return m, nil
+	case "enter":
+		deletedCount := 0
+		for i, s := range m.cleanupSessions {
+			if !m.cleanupChecked[i] {
+				continue
+			}
+			loaded, err := session.Load(s.Name)
+			if err == nil {
+				if loaded.TmuxWindow != 0 && baytmux.WindowExists(loaded.TmuxWindow) {
+					baytmux.BreakTopbarToOwnWindow()
+					baytmux.KillWindow(loaded.TmuxWindow)
+				}
+				if loaded.IsWorktree && loaded.WorktreeBranch != "" {
+					worktree.Remove(loaded.RepoPath, loaded.Repo, loaded.WorktreeBranch)
+				}
+			}
+			hooks.OnSessionDelete(s.Name)
+			session.Delete(s.Name)
+			if m.activeSession == s.Name {
+				m.activeSession = ""
+				m.activeWindowIdx = 0
+			}
+			deletedCount++
+		}
+		m.cleanupSessions = nil
+		m.mode = modeNormal
+		m.refresh()
+		if deletedCount > 0 {
+			m.statusMsg = fmt.Sprintf("Cleaned up %d stale session(s)", deletedCount)
+		}
+		m2, cmd := m.doAutoActivate()
+		if deletedCount > 0 {
+			if tm, ok := m2.(Model); ok {
+				tm.statusMsg = fmt.Sprintf("Cleaned up %d stale session(s)", deletedCount)
+				return tm, tea.Batch(cmd, clearStatusAfter(3*time.Second))
+			}
+		}
+		return m2, cmd
+	}
 	return m, nil
 }
 

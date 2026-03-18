@@ -3,6 +3,7 @@ package topbar
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -113,6 +114,53 @@ func (m Model) renderSessionRow() string {
 		}
 		return pad + styles.HelpBar.Render(label)
 	}
+	if m.mode == modeQuickSwitch {
+		return pad + "/ " + m.switchInput.View()
+	}
+	if m.mode == modeHelp {
+		return pad +
+			styles.NoteText.Render("←→") + " " + styles.HelpBar.Render("navigate") + "  " +
+			styles.NoteText.Render("enter") + " " + styles.HelpBar.Render("activate") + "  " +
+			styles.NoteText.Render("n") + " " + styles.HelpBar.Render("new") + "  " +
+			styles.NoteText.Render("d") + " " + styles.HelpBar.Render("delete") + "  " +
+			styles.NoteText.Render("R") + " " + styles.HelpBar.Render("rename") + "  " +
+			styles.NoteText.Render("N") + " " + styles.HelpBar.Render("note") + "  " +
+			styles.NoteText.Render("/") + " " + styles.HelpBar.Render("search") + "  " +
+			styles.NoteText.Render("m") + " " + styles.HelpBar.Render("memory") + "  " +
+			styles.NoteText.Render("S") + " " + styles.HelpBar.Render("settings") + "  " +
+			styles.NoteText.Render("q") + " " + styles.HelpBar.Render("quit") + "  " +
+			styles.NoteText.Render("esc") + " " + styles.HelpBar.Render("exit")
+	}
+	if m.mode == modeCleanup {
+		var items []string
+		start := 0
+		if m.cleanupCursor > 4 {
+			start = m.cleanupCursor - 4
+		}
+		end := start + 5
+		if end > len(m.cleanupSessions) {
+			end = len(m.cleanupSessions)
+		}
+		for i := start; i < end; i++ {
+			s := m.cleanupSessions[i]
+			check := "[ ]"
+			if m.cleanupChecked[i] {
+				check = "[x]"
+			}
+			t := s.LastActiveAt
+			if t.IsZero() {
+				t = s.CreatedAt
+			}
+			days := int(time.Since(t).Hours() / 24)
+			label := fmt.Sprintf("%s %s/%s (%dd ago)", check, s.Repo, s.Name, days)
+			if i == m.cleanupCursor {
+				items = append(items, styles.SessionTabFocused.Render(label))
+			} else {
+				items = append(items, styles.SessionTabStale.Render(label))
+			}
+		}
+		return pad + strings.Join(items, "  ")
+	}
 
 	sessions := m.activeRepoSessions()
 	if len(sessions) == 0 {
@@ -142,15 +190,26 @@ func (m Model) renderSessionRow() string {
 			label = fmt.Sprintf("[%d:%s%s]", displayIdx, s.Name, staleMark)
 		}
 
+		// Prepend agent activity dot
+		dot := ""
+		if status, ok := m.agentStatus[s.Name]; ok {
+			switch status {
+			case "active":
+				dot = styles.AgentActive.Render("●") + " "
+			case "idle":
+				dot = styles.AgentIdle.Render("●") + " "
+			}
+		}
+
 		switch {
 		case isSelected:
-			tabs = append(tabs, styles.SessionTabFocused.Render(label))
+			tabs = append(tabs, dot+styles.SessionTabFocused.Render(label))
 		case stale:
-			tabs = append(tabs, styles.SessionTabStale.Render(label))
+			tabs = append(tabs, dot+styles.SessionTabStale.Render(label))
 		case isActive:
-			tabs = append(tabs, styles.SessionTabActive.Render(label))
+			tabs = append(tabs, dot+styles.SessionTabActive.Render(label))
 		default:
-			tabs = append(tabs, styles.SessionTab.Render(label))
+			tabs = append(tabs, dot+styles.SessionTab.Render(label))
 		}
 	}
 
@@ -167,6 +226,46 @@ func (m Model) renderNoteRow() string {
 	}
 	if m.mode == modeCreate {
 		return pad + styles.HelpBar.Render("Close wizard to return")
+	}
+	if m.mode == modeQuickSwitch {
+		if len(m.switchMatches) == 0 {
+			return pad + styles.NoSessions.Render("no matches")
+		}
+		var items []string
+		limit := 5
+		if len(m.switchMatches) < limit {
+			limit = len(m.switchMatches)
+		}
+		for i := 0; i < limit; i++ {
+			s := m.switchMatches[i]
+			label := s.Repo + "/" + s.Name
+			if i == m.switchSelected {
+				items = append(items, styles.SessionTabFocused.Render(label))
+			} else {
+				items = append(items, styles.SessionTab.Render(label))
+			}
+		}
+		return pad + strings.Join(items, "  ")
+	}
+	if m.mode == modeHelp {
+		return pad +
+			styles.NoteText.Render("`+space") + " " + styles.HelpBar.Render("focus") + "  " +
+			styles.NoteText.Render("`+tab") + " " + styles.HelpBar.Render("cycle") + "  " +
+			styles.NoteText.Render("`+1-9") + " " + styles.HelpBar.Render("jump") + "  " +
+			styles.NoteText.Render("`+r") + " " + styles.HelpBar.Render("repo") + "  " +
+			styles.NoteText.Render("`+a") + " " + styles.HelpBar.Render("agent") + "  " +
+			styles.NoteText.Render("`+d/D") + " " + styles.HelpBar.Render("split") + "  " +
+			styles.NoteText.Render("`+w") + " " + styles.HelpBar.Render("close") + "  " +
+			styles.NoteText.Render("`+arrows") + " " + styles.HelpBar.Render("nav")
+	}
+	if m.mode == modeCleanup {
+		checked := 0
+		for _, c := range m.cleanupChecked {
+			if c {
+				checked++
+			}
+		}
+		return pad + styles.HelpBar.Render(fmt.Sprintf("%d of %d selected — enter delete, space toggle, a all, esc skip", checked, len(m.cleanupSessions)))
 	}
 	// Transient status messages take priority over note display
 	if m.statusMsg != "" {
@@ -204,6 +303,15 @@ func (m Model) renderHintBarPlain() string {
 	if m.mode == modeCreate {
 		return tmuxHint("creating", "close wizard to return")
 	}
+	if m.mode == modeQuickSwitch {
+		return tmuxHint("↑↓", "select") + gap + tmuxHint("enter", "switch") + gap + tmuxHint("esc", "cancel")
+	}
+	if m.mode == modeHelp {
+		return tmuxHint("any key", "close")
+	}
+	if m.mode == modeCleanup {
+		return tmuxHint("space", "toggle") + gap + tmuxHint("a", "all") + gap + tmuxHint("enter", "delete") + gap + tmuxHint("esc", "skip")
+	}
 
 	if m.focused {
 		return tmuxHint("←→", "navigate") + gap +
@@ -212,8 +320,10 @@ func (m Model) renderHintBarPlain() string {
 			tmuxHint("d", "delete") + gap +
 			tmuxHint("R", "rename") + gap +
 			tmuxHint("N", "note") + gap +
+			tmuxHint("/", "search") + gap +
 			tmuxHint("m", "memory") + gap +
 			tmuxHint("S", "settings") + gap +
+			tmuxHint("?", "help") + gap +
 			tmuxHint("q", "quit") + gap +
 			tmuxHint("esc", "exit")
 	}

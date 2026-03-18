@@ -573,11 +573,62 @@ func CaptureAllDevPanes(windowIndex, lines int) (map[string]string, error) {
 
 // PaneInfo holds information about a single tmux pane.
 type PaneInfo struct {
-	PaneID  string
-	Command string
-	Cwd     string
-	IsAgent bool
-	Title   string
+	PaneID   string
+	Command  string
+	Cwd      string
+	IsAgent  bool
+	Title    string
+	Activity int64 // unix timestamp of last pane output
+}
+
+// SnapshotAllPanes queries all panes across all windows in the bay session.
+// Returns a map of windowIndex → []PaneInfo (excluding the topbar pane).
+func SnapshotAllPanes() map[int][]PaneInfo {
+	sep := "%%BAY%%"
+	out, err := run("list-panes", "-s", "-t", MainSession,
+		"-F", fmt.Sprintf("#{window_index}%s#{pane_id}%s#{pane_start_command}%s#{pane_activity}", sep, sep, sep))
+	if err != nil {
+		return nil
+	}
+
+	topbarID := TopbarPaneTarget()
+	result := make(map[int][]PaneInfo)
+
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.SplitN(line, sep, 4)
+		if len(parts) < 4 {
+			continue
+		}
+
+		winIdx, err := strconv.Atoi(parts[0])
+		if err != nil {
+			continue
+		}
+		paneID := parts[1]
+		startCmd := parts[2]
+		activityStr := parts[3]
+
+		if paneID == topbarID {
+			continue
+		}
+
+		isAgent := strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude")
+		activity, _ := strconv.ParseInt(activityStr, 10, 64)
+
+		result[winIdx] = append(result[winIdx], PaneInfo{
+			PaneID:   paneID,
+			Command:  startCmd,
+			IsAgent:  isAgent,
+			Activity: activity,
+		})
+	}
+
+	return result
 }
 
 // SnapshotPaneLayout queries tmux for the current pane layout of a window.
@@ -726,12 +777,13 @@ func EnsureDevPane(windowIndex int, dir string) error {
 		return nil // Dev panes still exist — nothing to do
 	}
 
-	// No dev panes remain — split a new terminal below the topbar.
+	// No dev panes remain — split a new agent pane below the topbar.
 	target := fmt.Sprintf("%s:%d", MainSession, windowIndex)
 	args := []string{"split-window", "-v", "-t", target}
 	if dir != "" {
 		args = append(args, "-c", dir)
 	}
+	args = append(args, "bash", "-c", "bay agent")
 	if _, err := run(args...); err != nil {
 		return fmt.Errorf("ensure-dev-pane split-window: %w", err)
 	}

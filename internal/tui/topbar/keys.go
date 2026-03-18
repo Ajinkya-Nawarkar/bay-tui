@@ -19,9 +19,11 @@ type keyMap struct {
 	Delete key.Binding
 	Rename key.Binding
 	Note     key.Binding
-	Settings key.Binding
-	Quit     key.Binding
-	Escape   key.Binding
+	Settings    key.Binding
+	QuickSwitch key.Binding
+	Help        key.Binding
+	Quit        key.Binding
+	Escape      key.Binding
 }
 
 var keys = keyMap{
@@ -80,6 +82,14 @@ var keys = keyMap{
 	Settings: key.NewBinding(
 		key.WithKeys("S"),
 		key.WithHelp("S", "settings"),
+	),
+	QuickSwitch: key.NewBinding(
+		key.WithKeys("/"),
+		key.WithHelp("/", "quick switch"),
+	),
+	Help: key.NewBinding(
+		key.WithKeys("?"),
+		key.WithHelp("?", "help"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q"),

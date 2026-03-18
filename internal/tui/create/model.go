@@ -220,7 +220,7 @@ func (m *Model) createSession(name string) tea.Cmd {
 			WorktreeBranch: branch,
 			CreatedAt:      time.Now(),
 			Panes: []session.Pane{
-				{Type: "shell", Cwd: workDir},
+				{Type: "agent", Cwd: workDir},
 			},
 		}
 		if err := session.Save(s); err != nil {
