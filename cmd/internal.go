@@ -36,6 +36,12 @@ func Internal(args []string) error {
 	case "sync-panes":
 		return internalSyncPanes()
 
+	case "ensure-pane":
+		return internalEnsurePane()
+
+	case "create":
+		return InternalCreate(args[1:])
+
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown internal command: %s\n", args[0])
 		return nil
@@ -83,6 +89,21 @@ func internalRecord(eventType, paneID, data string) error {
 		return memory.AppendEpisodic("unknown", eventType, data, paneID)
 	}
 	return memory.AppendEpisodic(s.Name, eventType, data, paneID)
+}
+
+func internalEnsurePane() error {
+	s, err := session.FindActiveSession()
+	if err != nil {
+		return nil // No active session — nothing to do
+	}
+
+	if err := baytmux.EnsureDevPane(s.TmuxWindow, s.WorkingDir); err != nil {
+		return err
+	}
+
+	// Sync pane layout after spawning the new pane.
+	hooks.SyncPaneLayout(s.Name, s.TmuxWindow)
+	return nil
 }
 
 func internalSyncPanes() error {

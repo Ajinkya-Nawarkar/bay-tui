@@ -402,8 +402,9 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 		run("set-hook", "-g", hook,
 			fmt.Sprintf("run-shell '%s'", resizeTopbar))
 	}
+	ensurePane := "bay internal ensure-pane &"
 	run("set-hook", "-g", "after-kill-pane",
-		fmt.Sprintf("run-shell '%s; %s'", resizeTopbar, syncPanes))
+		fmt.Sprintf("run-shell '%s; %s'", resizeTopbar, ensurePane))
 	// Clear title on new panes so they fall back to directory basename in the border.
 	run("set-hook", "-g", "after-split-window",
 		fmt.Sprintf("run-shell '%s; %s; %s'", clearTitle, resizeTopbar, syncPanes))
@@ -476,9 +477,10 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	// Empty input clears the title (reverts to directory basename).
 	run("bind-key", ",", "command-prompt", "-p", "pane name:", "select-pane -T '%%'")
 
-	// Memory hooks: capture pane buffer on pane exit for episodic recording
+	// Memory hooks: capture pane buffer on pane exit for episodic recording.
+	// Also ensure a dev pane exists so the session doesn't get stuck with only the topbar.
 	run("set-hook", "-g", "pane-exited",
-		"run-shell 'bay internal capture #{pane_id} &'")
+		"run-shell 'bay internal capture #{pane_id} &; bay internal ensure-pane &'")
 
 	return nil
 }
@@ -701,6 +703,32 @@ func WriteTopbarHints(hints string) {
 	os.MkdirAll(filepath.Dir(f), 0o755)
 	os.WriteFile(f, []byte(hints), 0o644)
 	run("refresh-client", "-S")
+}
+
+// EnsureDevPane checks if any non-topbar panes exist in the given window.
+// If not, it spawns a new terminal pane so the session doesn't get stuck.
+func EnsureDevPane(windowIndex int, dir string) error {
+	panes, err := SnapshotPaneLayout(windowIndex)
+	if err != nil {
+		return nil // Window may already be gone
+	}
+	if len(panes) > 0 {
+		return nil // Dev panes still exist — nothing to do
+	}
+
+	// No dev panes remain — split a new terminal below the topbar.
+	target := fmt.Sprintf("%s:%d", MainSession, windowIndex)
+	args := []string{"split-window", "-v", "-t", target}
+	if dir != "" {
+		args = append(args, "-c", dir)
+	}
+	if _, err := run(args...); err != nil {
+		return fmt.Errorf("ensure-dev-pane split-window: %w", err)
+	}
+
+	// Lock topbar height back to 5 lines.
+	run("resize-pane", "-t", TopbarPaneTarget(), "-y", TopbarHeight)
+	return nil
 }
 
 // ListBaySessions is kept for compatibility.
