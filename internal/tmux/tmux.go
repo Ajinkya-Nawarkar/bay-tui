@@ -725,6 +725,9 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 		return nil
 	}
 
+	// Select the dev pane so split-window targets it, not the topbar.
+	run("select-pane", "-t", firstPane)
+
 	for i, p := range panes {
 		if i == 0 {
 			// First pane already exists — launch agent if needed, set title
@@ -748,7 +751,7 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 			continue
 		}
 
-		args := []string{"split-window", "-h", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex), "-c", dir}
+		args := []string{"split-window", "-h", "-t", firstPane, "-c", dir}
 		if p.Type == "agent" {
 			// split-window runs the command directly as the pane process —
 			// no bash -c wrapper needed.
