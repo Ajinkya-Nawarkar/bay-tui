@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/config"
+	"bay/internal/constants"
 	"bay/internal/hooks"
 	"bay/internal/logging"
 	"bay/internal/scanner"
@@ -286,7 +287,7 @@ func (m *Model) activeRepoName() string {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg { return autoActivateMsg{} },
-		tea.Tick(2*time.Second, func(time.Time) tea.Msg { return agentTickMsg{} }),
+		tea.Tick(constants.AgentTickInterval, func(time.Time) tea.Msg { return agentTickMsg{} }),
 	)
 }
 
@@ -294,8 +295,8 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case autoActivateMsg:
-		// Check for stale sessions (older than 30 days)
-		staleCutoff := time.Now().AddDate(0, 0, -30)
+		// Check for stale sessions (older than StaleDays)
+		staleCutoff := time.Now().AddDate(0, 0, -constants.StaleDays)
 		var staleSessions []*session.Session
 		for _, s := range m.sessions {
 			t := s.LastActiveAt
@@ -348,7 +349,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Primary: use pane_activity timestamp if available
 				if p.Activity > 0 {
-					if now-p.Activity <= 3 {
+					if now-p.Activity <= constants.AgentActivityThreshold {
 						isActive = true
 					}
 				} else if p.CursorPos != "" {
@@ -376,10 +377,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prevCursors = newCursors
 
 		// Refresh diff for the currently displayed session
-		cmds := []tea.Cmd{tea.Tick(2 * time.Second, func(time.Time) tea.Msg { return agentTickMsg{} })}
+		cmds := []tea.Cmd{tea.Tick(constants.AgentTickInterval, func(time.Time) tea.Msg { return agentTickMsg{} })}
 		if sessionName := m.selectedSessionName(); sessionName != "" {
 			cached := m.diffCache[sessionName]
-			if cached == nil || time.Since(cached.ComputedAt) > 10*time.Second {
+			if cached == nil || time.Since(cached.ComputedAt) > constants.DiffCacheTTL {
 				// Find the session's working dir
 				for _, s := range m.sessions {
 					if s.Name == sessionName {
@@ -555,38 +556,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.startCreate("")
 			}
 			// From session row: pre-select current repo
-			if len(m.activeRepoSessions()) >= 9 {
-				m.statusMsg = "Max 9 sessions per repo"
-				return m, clearStatusAfter(2 * time.Second)
+			if len(m.activeRepoSessions()) >= constants.MaxSessionsPerRepo {
+				m.statusMsg = fmt.Sprintf("Max %d sessions per repo", constants.MaxSessionsPerRepo)
+				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m.startCreate(m.activeRepoName())
 		case "m":
 			if m.focusRow == 0 {
 				m.statusMsg = "Select a session first"
-				return m, clearStatusAfter(2 * time.Second)
+				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			session := m.activeSession
 			if session == "" {
 				m.statusMsg = "No active session"
-				return m, clearStatusAfter(2 * time.Second)
+				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m, func() tea.Msg { return SwitchToMemoryMsg{SessionName: session} }
 		case "d":
 			if m.focusRow == 0 {
 				m.statusMsg = "Select a session first"
-				return m, clearStatusAfter(2 * time.Second)
+				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m.startDelete()
 		case "R":
 			if m.focusRow == 0 {
 				m.statusMsg = "Select a session first"
-				return m, clearStatusAfter(2 * time.Second)
+				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m.startRename()
 		case "N":
 			if m.focusRow == 0 {
 				m.statusMsg = "Select a session first"
-				return m, clearStatusAfter(2 * time.Second)
+				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m.startEditNote()
 		case "S":
@@ -634,8 +635,6 @@ func (m Model) jumpToSession(idx int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) cycleRepo(dir int) (tea.Model, tea.Cmd) {
-	totalSlots := len(m.repos) + 1 // repos + ＋ button
-
 	if m.plusSelected {
 		if dir > 0 {
 			// Wrap from ＋ to first repo (or stay on ＋ if no repos)
@@ -668,7 +667,6 @@ func (m Model) cycleRepo(dir int) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	_ = totalSlots // suppress unused
 	m.selectedSessionIdx = 0
 	m.statusMsg = ""
 	return m, nil
@@ -713,12 +711,12 @@ func (m Model) activateSession(s *session.Session) (tea.Model, tea.Cmd) {
 	if isSessionStale(s) {
 		logging.Warn("session %q has missing directory: %s", s.Name, s.WorkingDir)
 		m.statusMsg = "Session directory missing — delete with d"
-		return m, clearStatusAfter(3 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearLong)
 	}
 	if err := m.switchToSession(s); err != nil {
 		logging.Error("switchToSession %q: %v", s.Name, err)
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
-		return m, clearStatusAfter(3 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearLong)
 	}
 	m.focused = false
 	m.focusRow = 0
@@ -728,7 +726,9 @@ func (m Model) activateSession(s *session.Session) (tea.Model, tea.Cmd) {
 	s.LastActiveAt = time.Now()
 	session.Save(s)
 
-	session.SaveActiveSession(s.Name)
+	if err := session.SaveActiveSession(s.Name); err != nil {
+		logging.Error("saving active session marker: %v", err)
+	}
 	m.refresh()
 	windowIdx := m.activeWindowIdx
 	return m, func() tea.Msg {
@@ -812,7 +812,7 @@ func (m Model) startDelete() (tea.Model, tea.Cmd) {
 	target := m.selectedSessionName()
 	if target == "" {
 		m.statusMsg = "No session to delete"
-		return m, clearStatusAfter(2 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearDuration)
 	}
 	m.mode = modeConfirmDelete
 	m.deleteTarget = target
@@ -893,7 +893,7 @@ func (m Model) startRename() (tea.Model, tea.Cmd) {
 	target := m.selectedSessionName()
 	if target == "" {
 		m.statusMsg = "No session to rename"
-		return m, clearStatusAfter(2 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearDuration)
 	}
 	m.mode = modeRename
 	m.renameTarget = target
@@ -921,7 +921,7 @@ func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.mode = modeNormal
 		m.renameTarget = ""
-		return m, clearStatusAfter(2 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearDuration)
 	case "esc":
 		m.mode = modeNormal
 		m.renameTarget = ""
@@ -937,7 +937,7 @@ func (m Model) startEditNote() (tea.Model, tea.Cmd) {
 	target := m.selectedSessionName()
 	if target == "" {
 		m.statusMsg = "No session"
-		return m, clearStatusAfter(2 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearDuration)
 	}
 	m.mode = modeEditNote
 	m.noteTarget = target
@@ -1031,18 +1031,18 @@ func (m Model) startSettings() (tea.Model, tea.Cmd) {
 	newWindowIdx, err := baytmux.CreateSessionWindow(config.BayDir())
 	if err != nil {
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
-		return m, clearStatusAfter(3 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearLong)
 	}
 
 	if err := baytmux.MoveTopbarToWindow(newWindowIdx); err != nil {
 		baytmux.KillWindow(newWindowIdx)
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
-		return m, clearStatusAfter(3 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearLong)
 	}
 
 	if err := baytmux.SwitchToWindow(newWindowIdx); err != nil {
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
-		return m, clearStatusAfter(3 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearLong)
 	}
 
 	editor := os.Getenv("EDITOR")
@@ -1110,18 +1110,18 @@ func (m Model) startCreate(preselectedRepo string) (tea.Model, tea.Cmd) {
 	newWindowIdx, err := baytmux.CreateSessionWindow(config.BayDir())
 	if err != nil {
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
-		return m, clearStatusAfter(3 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearLong)
 	}
 
 	if err := baytmux.MoveTopbarToWindow(newWindowIdx); err != nil {
 		baytmux.KillWindow(newWindowIdx)
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
-		return m, clearStatusAfter(3 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearLong)
 	}
 
 	if err := baytmux.SwitchToWindow(newWindowIdx); err != nil {
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
-		return m, clearStatusAfter(3 * time.Second)
+		return m, clearStatusAfter(constants.StatusClearLong)
 	}
 
 	// Build the shell command to run in the dev pane
@@ -1170,7 +1170,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		// Read created session name and activate it
 		createdName := session.LoadCreatedSession()
-		session.ClearCreatedSession()
+		_ = session.ClearCreatedSession()
 		m.refresh()
 
 		if createdName != "" {
@@ -1216,7 +1216,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			baytmux.SwitchToWindow(m.prevWindowIdx)
 		}
 
-		session.ClearCreatedSession()
+		_ = session.ClearCreatedSession()
 		m.refresh()
 		m.focused = true
 

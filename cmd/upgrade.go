@@ -27,7 +27,7 @@ type ghAsset struct {
 // Upgrade downloads the latest release binary and installs to ~/.local/bin/bay.
 func Upgrade() error {
 	installDir := filepath.Join(os.Getenv("HOME"), ".local", "bin")
-	if err := os.MkdirAll(installDir, 0755); err != nil {
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		return fmt.Errorf("creating install dir: %w", err)
 	}
 	currentBin := filepath.Join(installDir, "bay")
@@ -108,7 +108,7 @@ func Upgrade() error {
 		}
 		defer src.Close()
 
-		dst, err := os.OpenFile(currentBin, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0755)
+		dst, err := os.OpenFile(currentBin, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0o755)
 		if err != nil {
 			return fmt.Errorf("opening current binary for write: %w", err)
 		}

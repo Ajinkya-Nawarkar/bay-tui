@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"bay/internal/config"
+	"bay/internal/constants"
 )
 
 // FindActiveSession detects the active session from the current tmux window.
@@ -34,12 +35,12 @@ func FindActiveSession() (*Session, error) {
 }
 
 func activeSessionPath() string {
-	return filepath.Join(config.BayDir(), ".active-session")
+	return filepath.Join(config.BayDir(), constants.ActiveSessionFile)
 }
 
 // SaveActiveSession persists the active session name to disk.
-func SaveActiveSession(name string) {
-	os.WriteFile(activeSessionPath(), []byte(name), 0644)
+func SaveActiveSession(name string) error {
+	return os.WriteFile(activeSessionPath(), []byte(name), 0o644)
 }
 
 // LoadActiveSession reads the last active session name from disk.
@@ -52,12 +53,12 @@ func LoadActiveSession() string {
 }
 
 func createdSessionPath() string {
-	return filepath.Join(config.BayDir(), ".created-session")
+	return filepath.Join(config.BayDir(), constants.CreatedSessionFile)
 }
 
 // SaveCreatedSession persists the name of a just-created session to disk.
-func SaveCreatedSession(name string) {
-	os.WriteFile(createdSessionPath(), []byte(name), 0644)
+func SaveCreatedSession(name string) error {
+	return os.WriteFile(createdSessionPath(), []byte(name), 0o644)
 }
 
 // LoadCreatedSession reads the created session name from disk.
@@ -70,8 +71,12 @@ func LoadCreatedSession() string {
 }
 
 // ClearCreatedSession removes the created-session marker file.
-func ClearCreatedSession() {
-	os.Remove(createdSessionPath())
+func ClearCreatedSession() error {
+	err := os.Remove(createdSessionPath())
+	if os.IsNotExist(err) {
+		return nil // already gone
+	}
+	return err
 }
 
 // currentWindowIndex returns the active tmux window index.

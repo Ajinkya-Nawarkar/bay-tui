@@ -2,10 +2,7 @@ package memory
 
 import (
 	"database/sql"
-	"fmt"
 	"time"
-
-	"bay/internal/db"
 )
 
 // Task represents a task or subtask in a session.
@@ -27,17 +24,16 @@ func CreateTask(sessionID, title string, parentID *int64) (int64, error) {
 
 // CreateTaskDB inserts a new task using the given DB (or default).
 func CreateTaskDB(d *sql.DB, sessionID, title string, parentID *int64) (int64, error) {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return 0, fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return 0, err
 	}
 
 	// Determine next sort_order for this session
 	var maxOrder int
-	d.QueryRow(`SELECT COALESCE(MAX(sort_order), 0) FROM tasks WHERE session_id = ?`, sessionID).Scan(&maxOrder)
+	if err := d.QueryRow(`SELECT COALESCE(MAX(sort_order), 0) FROM tasks WHERE session_id = ?`, sessionID).Scan(&maxOrder); err != nil {
+		maxOrder = 0 // safe fallback — new task gets sort_order 1
+	}
 
 	var pid sql.NullInt64
 	if parentID != nil {
@@ -62,12 +58,9 @@ func ListTasks(sessionID string) ([]Task, error) {
 
 // ListTasksDB returns all tasks for a session using the given DB (or default).
 func ListTasksDB(d *sql.DB, sessionID string) ([]Task, error) {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return nil, fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return nil, err
 	}
 
 	rows, err := d.Query(
@@ -107,19 +100,16 @@ func SetTaskStatus(id int64, status string) error {
 
 // SetTaskStatusDB updates a task's status using the given DB (or default).
 func SetTaskStatusDB(d *sql.DB, id int64, status string) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
 
 	if status == "done" {
-		_, err := d.Exec(`UPDATE tasks SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?`, status, id)
+		_, err = d.Exec(`UPDATE tasks SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?`, status, id)
 		return err
 	}
-	_, err := d.Exec(`UPDATE tasks SET status = ?, completed_at = NULL WHERE id = ?`, status, id)
+	_, err = d.Exec(`UPDATE tasks SET status = ?, completed_at = NULL WHERE id = ?`, status, id)
 	return err
 }
 
@@ -130,19 +120,16 @@ func DeleteTask(id int64) error {
 
 // DeleteTaskDB removes a task and its subtasks using the given DB (or default).
 func DeleteTaskDB(d *sql.DB, id int64) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
 
 	// Delete subtasks first
 	if _, err := d.Exec(`DELETE FROM tasks WHERE parent_id = ?`, id); err != nil {
 		return err
 	}
-	_, err := d.Exec(`DELETE FROM tasks WHERE id = ?`, id)
+	_, err = d.Exec(`DELETE FROM tasks WHERE id = ?`, id)
 	return err
 }
 
@@ -153,14 +140,11 @@ func ClearTasks(sessionID string) error {
 
 // ClearTasksDB removes all tasks for a session using the given DB (or default).
 func ClearTasksDB(d *sql.DB, sessionID string) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
-	_, err := d.Exec(`DELETE FROM tasks WHERE session_id = ?`, sessionID)
+	_, err = d.Exec(`DELETE FROM tasks WHERE session_id = ?`, sessionID)
 	return err
 }
 
@@ -171,18 +155,15 @@ func GetTaskByID(id int64) (*Task, error) {
 
 // GetTaskByIDDB returns a single task by its DB ID using the given DB.
 func GetTaskByIDDB(d *sql.DB, id int64) (*Task, error) {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return nil, fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return nil, err
 	}
 
 	var t Task
 	var parentID sql.NullInt64
 	var completedAt sql.NullTime
-	err := d.QueryRow(
+	err = d.QueryRow(
 		`SELECT id, session_id, title, status, parent_id, sort_order, created_at, completed_at
 		FROM tasks WHERE id = ?`, id,
 	).Scan(&t.ID, &t.SessionID, &t.Title, &t.Status, &parentID, &t.SortOrder, &t.CreatedAt, &completedAt)

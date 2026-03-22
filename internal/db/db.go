@@ -1,10 +1,25 @@
+// Package db provides a singleton SQLite connection to ~/.bay/bay.db.
+//
+// The connection is lazily initialized via sync.Once, making it thread-safe for
+// the first caller. WAL (Write-Ahead Logging) mode is enabled so the long-running
+// topbar TUI and short-lived CLI processes can read and write concurrently without
+// lock contention.
+//
+// On first open, migrate() runs idempotent CREATE TABLE IF NOT EXISTS statements
+// and sets up any required triggers, so the schema is always up to date.
+//
+// OpenPath(path) is the testing entrypoint — pass ":memory:" for an ephemeral
+// in-memory database. ResetSingleton() tears down the singleton so tests can
+// re-initialize cleanly; it is not safe for concurrent use in production.
 package db
 
 import (
 	"database/sql"
+	"path/filepath"
 	"sync"
 
 	"bay/internal/config"
+	"bay/internal/logging"
 	_ "modernc.org/sqlite"
 )
 
@@ -23,8 +38,12 @@ func Open() (*sql.DB, error) {
 			return
 		}
 		// Enable WAL mode for better concurrent read/write performance.
-		conn.Exec("PRAGMA journal_mode=WAL")
-		conn.Exec("PRAGMA busy_timeout=5000")
+		if _, e := conn.Exec("PRAGMA journal_mode=WAL"); e != nil {
+			logging.Warn("PRAGMA journal_mode=WAL failed: %v", e)
+		}
+		if _, e := conn.Exec("PRAGMA busy_timeout=5000"); e != nil {
+			logging.Warn("PRAGMA busy_timeout failed: %v", e)
+		}
 		err = migrate(conn)
 	})
 	return conn, err
@@ -36,8 +55,12 @@ func OpenPath(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	if _, e := db.Exec("PRAGMA journal_mode=WAL"); e != nil {
+		logging.Warn("PRAGMA journal_mode=WAL failed: %v", e)
+	}
+	if _, e := db.Exec("PRAGMA busy_timeout=5000"); e != nil {
+		logging.Warn("PRAGMA busy_timeout failed: %v", e)
+	}
 	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, err
@@ -47,7 +70,7 @@ func OpenPath(path string) (*sql.DB, error) {
 
 // DBPath returns ~/.bay/bay.db
 func DBPath() string {
-	return config.BayDir() + "/bay.db"
+	return filepath.Join(config.BayDir(), "bay.db")
 }
 
 // migrate runs CREATE TABLE IF NOT EXISTS for all tables + FTS + triggers.
@@ -119,7 +142,9 @@ func migrate(db *sql.DB) error {
 	// Create triggers only if they don't exist.
 	// SQLite doesn't have CREATE TRIGGER IF NOT EXISTS, so we check first.
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='episodic_ai'").Scan(&count)
+	if e := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='episodic_ai'").Scan(&count); e != nil {
+		logging.Warn("checking episodic_ai trigger: %v", e)
+	}
 	if count == 0 {
 		_, err := db.Exec(`CREATE TRIGGER episodic_ai AFTER INSERT ON episodic BEGIN
 			INSERT INTO episodic_fts(rowid, content, session_id, type)
@@ -130,7 +155,9 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
-	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='episodic_ad'").Scan(&count)
+	if e := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='episodic_ad'").Scan(&count); e != nil {
+		logging.Warn("checking episodic_ad trigger: %v", e)
+	}
 	if count == 0 {
 		_, err := db.Exec(`CREATE TRIGGER episodic_ad AFTER DELETE ON episodic BEGIN
 			INSERT INTO episodic_fts(episodic_fts, rowid, content, session_id, type)

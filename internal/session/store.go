@@ -1,3 +1,8 @@
+// Package session manages bay sessions as individual YAML files in ~/.bay/sessions/.
+//
+// Each session maps to one tmux window and tracks repo, panes, worktree info.
+// FindActiveSession detects the current session from the tmux window index.
+// Marker files (.active-session, .created-session) coordinate between TUI and CLI.
 package session
 
 import (
@@ -20,7 +25,7 @@ func Save(s *Session) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(sessionPath(s.Name), data, 0644)
+	return os.WriteFile(sessionPath(s.Name), data, 0o644)
 }
 
 // Load reads a session from its YAML file.

@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"bay/internal/db"
+	"bay/internal/logging"
 )
 
 // shellPromptPatterns matches common shell prompt lines that carry no meaningful content.
+// These filter out terminal noise (bare prompts, ANSI escape sequences, trivial commands
+// like "clear" or "exit") so that only substantive output is sent for LLM summarization.
 var shellPromptPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^[%$>#]\s*$`),                          // bare prompts
 	regexp.MustCompile(`^[%$>#] `),                              // prompt + space (no command)
@@ -45,10 +47,12 @@ func IsNonTrivialBuffer(raw string) bool {
 			meaningful++
 		}
 	}
-	return meaningful >= 3
+	return meaningful >= MeaningfulLineThreshold
 }
 
-// lowValuePhrases are indicators that a summary describes an idle/empty session.
+// lowValuePhrases catches LLM-generated summaries that indicate "nothing happened" in a session.
+// When the LLM summarizes an idle pane, it tends to produce responses containing these phrases.
+// Matching summaries are treated as low-value and will not overwrite an existing substantive summary.
 var lowValuePhrases = []string{
 	"no work done",
 	"no meaningful activity",
@@ -93,16 +97,15 @@ func SummarizeAsync(sessionID, rawBuffer, paneID string) error {
 
 // SummarizeAsyncDB saves buffer and spawns summarization using the given DB.
 func SummarizeAsyncDB(d *sql.DB, sessionID, rawBuffer, paneID string) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
 
 	// Save raw buffer to episodic immediately
-	AppendEpisodicDB(d, sessionID, "pane_snapshot", rawBuffer, paneID)
+	if err := AppendEpisodicDB(d, sessionID, "pane_snapshot", rawBuffer, paneID); err != nil {
+		logging.Error("saving pane snapshot to episodic: %v", err)
+	}
 
 	// Skip LLM summarization for trivially empty buffers
 	if !IsNonTrivialBuffer(rawBuffer) {
@@ -110,7 +113,7 @@ func SummarizeAsyncDB(d *sql.DB, sessionID, rawBuffer, paneID string) error {
 	}
 
 	// Save to pending_summaries for async processing
-	_, err := d.Exec(
+	_, err = d.Exec(
 		`INSERT INTO pending_summaries (session_id, raw_buffer) VALUES (?, ?)`,
 		sessionID, rawBuffer,
 	)
@@ -120,9 +123,11 @@ func SummarizeAsyncDB(d *sql.DB, sessionID, rawBuffer, paneID string) error {
 
 	// Spawn background goroutine for LLM summarization
 	go func() {
-		processSingleSummary(d, sessionID, rawBuffer)
+		_ = processSingleSummaryErr(d, sessionID, rawBuffer)
 		// Clean up the pending row after processing
-		d.Exec(`DELETE FROM pending_summaries WHERE session_id = ? AND raw_buffer = ?`, sessionID, rawBuffer)
+		if _, err := d.Exec(`DELETE FROM pending_summaries WHERE session_id = ? AND raw_buffer = ?`, sessionID, rawBuffer); err != nil {
+			logging.Error("deleting processed pending summary: %v", err)
+		}
 	}()
 
 	return nil
@@ -136,12 +141,9 @@ func ProcessPendingSummaries() error {
 
 // ProcessPendingSummariesDB processes pending summaries using the given DB.
 func ProcessPendingSummariesDB(d *sql.DB) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
 
 	// Clean up stale entries first
@@ -149,8 +151,8 @@ func ProcessPendingSummariesDB(d *sql.DB) error {
 
 	rows, err := d.Query(
 		`SELECT id, session_id, raw_buffer FROM pending_summaries
-		WHERE retry_count < 3 AND created_at > datetime('now', '-1 hour')
-		ORDER BY created_at`)
+		WHERE retry_count < ? AND created_at > datetime('now', ?)
+		ORDER BY created_at`, MaxRetries, PendingMaxAge)
 	if err != nil {
 		return err
 	}
@@ -175,10 +177,14 @@ func ProcessPendingSummariesDB(d *sql.DB) error {
 		go func(item pending) {
 			err := processSingleSummaryErr(d, item.sessionID, item.rawBuffer)
 			if err != nil {
-				// Increment retry count on failure
-				d.Exec(`UPDATE pending_summaries SET retry_count = retry_count + 1 WHERE id = ?`, item.id)
+				logging.Warn("summarization failed for pending %d: %v", item.id, err)
+				if _, e := d.Exec(`UPDATE pending_summaries SET retry_count = retry_count + 1 WHERE id = ?`, item.id); e != nil {
+					logging.Error("incrementing retry count for pending %d: %v", item.id, e)
+				}
 			} else {
-				d.Exec(`DELETE FROM pending_summaries WHERE id = ?`, item.id)
+				if _, e := d.Exec(`DELETE FROM pending_summaries WHERE id = ?`, item.id); e != nil {
+					logging.Error("deleting completed pending %d: %v", item.id, e)
+				}
 			}
 		}(p)
 	}
@@ -188,23 +194,17 @@ func ProcessPendingSummariesDB(d *sql.DB) error {
 
 // CleanStalePendingSummariesDB removes pending summaries that are too old or have exhausted retries.
 func CleanStalePendingSummariesDB(d *sql.DB) {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return
 	}
-	d.Exec(`DELETE FROM pending_summaries WHERE retry_count >= 3 OR created_at <= datetime('now', '-1 hour')`)
+	if _, err := d.Exec(`DELETE FROM pending_summaries WHERE retry_count >= ? OR created_at <= datetime('now', ?)`, MaxRetries, PendingMaxAge); err != nil {
+		logging.Error("cleaning stale pending summaries: %v", err)
+	}
 }
 
-// processSingleSummary runs LLM summarization on a raw buffer and updates working_state.
-// Also appends a rolling "summary" entry to episodic.
-func processSingleSummary(d *sql.DB, sessionID, rawBuffer string) {
-	processSingleSummaryErr(d, sessionID, rawBuffer)
-}
-
-// processSingleSummaryErr is like processSingleSummary but returns an error.
+// processSingleSummaryErr runs LLM summarization on a raw buffer, updates
+// working_state with the new summary, and appends a "summary" entry to episodic.
 func processSingleSummaryErr(d *sql.DB, sessionID, rawBuffer string) error {
 	summary, err := summarizeBuffer(rawBuffer)
 	if err != nil {
@@ -236,16 +236,16 @@ func compactSummaries(d *sql.DB, sessionID string) {
 		`SELECT COUNT(*) FROM episodic WHERE session_id = ? AND type = 'summary'`,
 		sessionID,
 	).Scan(&count)
-	if err != nil || count <= 10 {
+	if err != nil || count <= CompactThreshold {
 		return
 	}
 
-	// Fetch the oldest 10 summaries
+	// Fetch the oldest summaries up to the compaction threshold
 	rows, err := d.Query(
 		`SELECT id, content FROM episodic
 		WHERE session_id = ? AND type = 'summary'
-		ORDER BY id ASC LIMIT 10`,
-		sessionID,
+		ORDER BY id ASC LIMIT ?`,
+		sessionID, CompactThreshold,
 	)
 	if err != nil {
 		return
@@ -264,7 +264,7 @@ func compactSummaries(d *sql.DB, sessionID string) {
 		contents = append(contents, content)
 	}
 
-	if len(ids) < 2 {
+	if len(ids) < MinCompactEntries {
 		return
 	}
 
@@ -328,15 +328,12 @@ func PendingSummaryCount() (int, error) {
 
 // PendingSummaryCountDB returns pending count using the given DB.
 func PendingSummaryCountDB(d *sql.DB) (int, error) {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return 0, fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return 0, err
 	}
 
 	var count int
-	err := d.QueryRow(`SELECT COUNT(*) FROM pending_summaries`).Scan(&count)
+	err = d.QueryRow(`SELECT COUNT(*) FROM pending_summaries`).Scan(&count)
 	return count, err
 }

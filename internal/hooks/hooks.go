@@ -1,3 +1,8 @@
+// Package hooks coordinates session lifecycle events with the memory system.
+//
+// OnSessionCreate/Activate/Deactivate/Delete/Rename update working_state and episodic.
+// SyncPaneLayout snapshots tmux pane layout to session YAML, preserving agent session IDs.
+// Debounce prevents rapid duplicate captures when windows switch quickly.
 package hooks
 
 import (
@@ -5,6 +10,7 @@ import (
 	"time"
 
 	"bay/internal/config"
+	"bay/internal/logging"
 	"bay/internal/memory"
 	"bay/internal/session"
 	baytmux "bay/internal/tmux"
@@ -240,10 +246,15 @@ func OnSessionRename(oldName, newName string) error {
 	// Rename episodic entries
 	d, err := memory.GetDB()
 	if err != nil {
+		logging.Error("opening db for session rename: %v", err)
 		return nil
 	}
-	d.Exec(`UPDATE episodic SET session_id = ? WHERE session_id = ?`, newName, oldName)
-	d.Exec(`UPDATE pending_summaries SET session_id = ? WHERE session_id = ?`, newName, oldName)
+	if _, e := d.Exec(`UPDATE episodic SET session_id = ? WHERE session_id = ?`, newName, oldName); e != nil {
+		logging.Error("renaming episodic entries %s→%s: %v", oldName, newName, e)
+	}
+	if _, e := d.Exec(`UPDATE pending_summaries SET session_id = ? WHERE session_id = ?`, newName, oldName); e != nil {
+		logging.Error("renaming pending_summaries %s→%s: %v", oldName, newName, e)
+	}
 
 	return nil
 }

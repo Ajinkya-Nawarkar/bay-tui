@@ -1,3 +1,10 @@
+// Package tmux wraps tmux CLI commands for bay's single-session architecture.
+//
+// All sessions share one tmux session named "bay"; each bay session owns one window.
+// Topbar pane is physically moved between windows via join-pane/break-pane.
+// Topbar pane ID persisted to ~/.bay/.topbar-pane-id for stability across moves.
+// bindKeys sets up prefix2 (backtick), hooks, and keybindings for the bay session.
+// wrapTopbarCmd generates a restart loop so the TUI auto-recovers from crashes.
 package tmux
 
 import (
@@ -7,6 +14,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"bay/internal/constants"
 )
 
 const (
@@ -101,11 +110,11 @@ func wrapTopbarCmd(cmd string) string {
 			"else "+
 			"fails=0; "+
 			"fi; "+
-			"if [ $fails -ge 5 ]; then "+
-			"echo \"bay topbar crashed 5 times in a row, giving up\"; "+
+			fmt.Sprintf("if [ $fails -ge %d ]; then ", constants.TopbarRestartMaxRetries)+
+			fmt.Sprintf("echo \"bay topbar crashed %d times in a row, giving up\"; ", constants.TopbarRestartMaxRetries)+
 			"break; "+
 			"fi; "+
-			"sleep 0.5; "+
+			"sleep "+constants.TopbarRestartDelay+"; "+
 			"done", quoted)
 }
 

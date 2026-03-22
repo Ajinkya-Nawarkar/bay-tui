@@ -1,6 +1,18 @@
+// Package config manages ~/.bay/config.yaml — the global bay configuration file.
+//
+// Load reads the config from disk and unmarshals it; Save marshals and writes
+// atomically so a crash mid-write never corrupts the file. BayDir() returns the
+// root directory (~/.bay/) and every other path helper (ConfigPath, SessionsDir,
+// WorktreesDir, DBPath, etc.) is derived from it.
+//
+// EnsureDirs creates the full directory skeleton (~/.bay/sessions/, worktrees/,
+// logs/, pane-agents/) on first run, making it safe for other packages to assume
+// these directories exist. DefaultConfig() returns sensible defaults for a fresh
+// install so the setup wizard has something to write.
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -37,7 +49,7 @@ func EnsureDirs() error {
 		filepath.Join(BayDir(), "logs"),
 	}
 	for _, d := range dirs {
-		if err := os.MkdirAll(d, 0755); err != nil {
+		if err := os.MkdirAll(d, 0o755); err != nil {
 			return err
 		}
 	}
@@ -63,6 +75,20 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
+// Validate checks a Config for obviously invalid values.
+func Validate(cfg *Config) error {
+	if cfg.Defaults.WorktreeLocation != "" &&
+		cfg.Defaults.WorktreeLocation != WorktreeManaged &&
+		cfg.Defaults.WorktreeLocation != WorktreeAdjacent {
+		return fmt.Errorf("invalid worktree_location %q (want %q or %q)",
+			cfg.Defaults.WorktreeLocation, WorktreeManaged, WorktreeAdjacent)
+	}
+	if cfg.Memory.ContextBudget < 0 {
+		return fmt.Errorf("context_budget must be non-negative, got %d", cfg.Memory.ContextBudget)
+	}
+	return nil
+}
+
 // Save writes the config to ~/.bay/config.yaml.
 func Save(cfg *Config) error {
 	if err := EnsureDirs(); err != nil {
@@ -72,7 +98,7 @@ func Save(cfg *Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(ConfigPath(), data, 0644)
+	return os.WriteFile(ConfigPath(), data, 0o644)
 }
 
 // DBPath returns the path to ~/.bay/bay.db
@@ -88,7 +114,7 @@ func DefaultConfig() *Config {
 		Defaults: Defaults{
 			Shell:            "zsh",
 			Agent:            "claude",
-			WorktreeLocation: "managed",
+			WorktreeLocation: WorktreeManaged,
 		},
 		Memory: DefaultMemoryConfig(),
 	}
@@ -101,6 +127,6 @@ func DefaultMemoryConfig() MemoryConfig {
 		EpisodicLogging:  true,
 		AutoSummarize:    true,
 		ContextInjection: true,
-		ContextBudget:    12000,
+		ContextBudget:    DefaultContextBudget,
 	}
 }

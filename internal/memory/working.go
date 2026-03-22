@@ -2,10 +2,7 @@ package memory
 
 import (
 	"database/sql"
-	"fmt"
 	"time"
-
-	"bay/internal/db"
 )
 
 // GetWorking loads the working state for a session. Returns nil if not found.
@@ -15,19 +12,16 @@ func GetWorking(sessionID string) (*WorkingState, error) {
 
 // GetWorkingDB loads working state using the given DB (or default).
 func GetWorkingDB(d *sql.DB, sessionID string) (*WorkingState, error) {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return nil, fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return nil, err
 	}
 
 	w := &WorkingState{}
 	var activeSince sql.NullTime
 	var worktreePath, gitBranch, currentTask, lastSummary sql.NullString
 
-	err := d.QueryRow(
+	err = d.QueryRow(
 		`SELECT session_id, repo, worktree_path, git_branch,
 			current_task, last_summary, active_since, last_updated
 		FROM working_state WHERE session_id = ?`, sessionID,
@@ -61,15 +55,12 @@ func UpsertWorking(w *WorkingState) error {
 
 // UpsertWorkingDB creates or updates working state using the given DB (or default).
 func UpsertWorkingDB(d *sql.DB, w *WorkingState) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
 
-	_, err := d.Exec(
+	_, err = d.Exec(
 		`INSERT INTO working_state (session_id, repo, worktree_path, git_branch,
 			current_task, last_summary, active_since, last_updated)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -95,15 +86,12 @@ func SetTask(sessionID, task string) error {
 
 // SetTaskDB updates current_task using the given DB (or default).
 func SetTaskDB(d *sql.DB, sessionID, task string) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
 
-	_, err := d.Exec(
+	_, err = d.Exec(
 		`UPDATE working_state SET current_task = ?, last_updated = CURRENT_TIMESTAMP WHERE session_id = ?`,
 		task, sessionID,
 	)
@@ -117,15 +105,12 @@ func SetSummary(sessionID, summary string) error {
 
 // SetSummaryDB updates last_summary using the given DB (or default).
 func SetSummaryDB(d *sql.DB, sessionID, summary string) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
 
-	_, err := d.Exec(
+	_, err = d.Exec(
 		`UPDATE working_state SET last_summary = ?, last_updated = CURRENT_TIMESTAMP WHERE session_id = ?`,
 		summary, sessionID,
 	)
@@ -139,14 +124,11 @@ func DeleteWorking(sessionID string) error {
 
 // DeleteWorkingDB removes working state using the given DB (or default).
 func DeleteWorkingDB(d *sql.DB, sessionID string) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
-	_, err := d.Exec(`DELETE FROM working_state WHERE session_id = ?`, sessionID)
+	_, err = d.Exec(`DELETE FROM working_state WHERE session_id = ?`, sessionID)
 	return err
 }
 
@@ -157,14 +139,11 @@ func RenameWorking(oldID, newID string) error {
 
 // RenameWorkingDB renames session_id using the given DB (or default).
 func RenameWorkingDB(d *sql.DB, oldID, newID string) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
-	_, err := d.Exec(`UPDATE working_state SET session_id = ? WHERE session_id = ?`, newID, oldID)
+	_, err = d.Exec(`UPDATE working_state SET session_id = ? WHERE session_id = ?`, newID, oldID)
 	return err
 }
 

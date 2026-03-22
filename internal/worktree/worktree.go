@@ -1,3 +1,8 @@
+// Package worktree manages git worktrees for bay sessions under ~/.bay/worktrees/{repo}/{branch}/.
+//
+// Create attempts to attach an existing branch first, then falls back to creating a new one.
+// Remove uses --force and falls back to manual cleanup + prune if the git command fails.
+// List parses `git worktree list --porcelain` output into structured entries.
 package worktree
 
 import (
@@ -8,6 +13,7 @@ import (
 	"strings"
 
 	"bay/internal/config"
+	"bay/internal/logging"
 )
 
 // WorktreePath returns the managed worktree path for a repo and branch.
@@ -21,7 +27,7 @@ func Create(repoPath, repoName, branch string) (string, error) {
 	wtPath := WorktreePath(repoName, branch)
 
 	// Ensure parent dir exists
-	if err := os.MkdirAll(filepath.Dir(wtPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(wtPath), 0o755); err != nil {
 		return "", fmt.Errorf("creating worktree directory: %w", err)
 	}
 
@@ -44,18 +50,22 @@ func Remove(repoPath, repoName, branch string) error {
 
 	cmd := exec.Command("git", "-C", repoPath, "worktree", "remove", wtPath, "--force")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		// If git worktree remove fails, try manual cleanup
-		_ = os.RemoveAll(wtPath)
-		// Prune stale worktree entries
-		exec.Command("git", "-C", repoPath, "worktree", "prune").Run()
-		_ = out
+		logging.Warn("git worktree remove failed (%v): %s — falling back to manual cleanup", err, string(out))
+		if rmErr := os.RemoveAll(wtPath); rmErr != nil {
+			logging.Error("manual worktree cleanup failed: %v", rmErr)
+		}
+		if pruneErr := exec.Command("git", "-C", repoPath, "worktree", "prune").Run(); pruneErr != nil {
+			logging.Warn("git worktree prune failed: %v", pruneErr)
+		}
 	}
 
 	// Clean up empty parent directory
 	parent := filepath.Dir(wtPath)
-	entries, _ := os.ReadDir(parent)
-	if len(entries) == 0 {
-		os.Remove(parent)
+	entries, err := os.ReadDir(parent)
+	if err == nil && len(entries) == 0 {
+		if rmErr := os.Remove(parent); rmErr != nil {
+			logging.Warn("removing empty worktree parent dir: %v", rmErr)
+		}
 	}
 
 	return nil

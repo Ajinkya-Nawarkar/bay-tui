@@ -13,7 +13,7 @@ func Build() error {
 	installDir := filepath.Join(os.Getenv("HOME"), ".local", "bin")
 	installPath := filepath.Join(installDir, "bay")
 
-	if err := os.MkdirAll(installDir, 0755); err != nil {
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		return fmt.Errorf("creating install dir: %w", err)
 	}
 

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"bay/internal/constants"
 	"bay/internal/hooks"
 	"bay/internal/memory"
 	"bay/internal/session"
@@ -133,12 +134,10 @@ func sessionNote(text string) error {
 }
 
 func sessionShow(sessionName string) error {
-	if sessionName == "" {
-		s, err := session.FindActiveSession()
-		if err != nil {
-			return fmt.Errorf("no active session (specify one): %w", err)
-		}
-		sessionName = s.Name
+	var err error
+	sessionName, err = resolveSessionName(sessionName)
+	if err != nil {
+		return err
 	}
 
 	w, err := memory.GetWorking(sessionName)
@@ -170,20 +169,24 @@ func sessionShow(sessionName string) error {
 		fmt.Printf("\nPending summaries: %d\n", pending)
 	}
 
-	fmt.Printf("Last updated: %s\n", w.LastUpdated.Format("2006-01-02 15:04:05"))
+	fmt.Printf("Last updated: %s\n", w.LastUpdated.Format(constants.TimeFmtFull))
 
 	return nil
 }
 
 func sessionHistory(args []string) error {
 	sessionName := ""
-	n := 20
+	n := constants.DefaultHistoryLimit
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "-n":
 			if i+1 < len(args) {
-				n, _ = strconv.Atoi(args[i+1])
+				parsed, parseErr := strconv.Atoi(args[i+1])
+				if parseErr != nil {
+					return fmt.Errorf("invalid count: %s", args[i+1])
+				}
+				n = parsed
 				i++
 			}
 		default:
@@ -191,12 +194,10 @@ func sessionHistory(args []string) error {
 		}
 	}
 
-	if sessionName == "" {
-		s, err := session.FindActiveSession()
-		if err != nil {
-			return fmt.Errorf("no active session (specify one): %w", err)
-		}
-		sessionName = s.Name
+	var err error
+	sessionName, err = resolveSessionName(sessionName)
+	if err != nil {
+		return err
 	}
 
 	entries, err := memory.RecentEpisodic(sessionName, n)
@@ -212,23 +213,18 @@ func sessionHistory(args []string) error {
 	fmt.Printf("Episodic log for '%s' (last %d):\n\n", sessionName, n)
 	for i := len(entries) - 1; i >= 0; i-- {
 		e := entries[i]
-		ts := e.Timestamp.Format("15:04:05")
-		content := e.Content
-		if len(content) > 120 {
-			content = content[:117] + "..."
-		}
+		ts := e.Timestamp.Format(constants.TimeFmtShort)
+		content := truncatePreview(e.Content)
 		fmt.Printf("  [%s] %-15s %s\n", ts, e.Type, content)
 	}
 	return nil
 }
 
 func sessionClear(sessionName string) error {
-	if sessionName == "" {
-		s, err := session.FindActiveSession()
-		if err != nil {
-			return fmt.Errorf("no active session (specify one): %w", err)
-		}
-		sessionName = s.Name
+	var err error
+	sessionName, err = resolveSessionName(sessionName)
+	if err != nil {
+		return err
 	}
 
 	memory.DeleteSessionEpisodic(sessionName)

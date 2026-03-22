@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"bay/internal/config"
+	"bay/internal/constants"
 	"bay/internal/memory"
 )
 
@@ -65,11 +67,8 @@ func ctxSearch(args []string) error {
 
 	fmt.Printf("Search results for '%s' (%d matches):\n\n", query, len(results))
 	for _, e := range results {
-		ts := e.Timestamp.Format("2006-01-02 15:04")
-		content := e.Content
-		if len(content) > 120 {
-			content = content[:117] + "..."
-		}
+		ts := e.Timestamp.Format(constants.TimeFmtCompact)
+		content := truncatePreview(e.Content)
 		fmt.Printf("  [%s] %-12s %-15s %s\n", ts, e.SessionID, e.Type, content)
 	}
 	return nil
@@ -135,7 +134,12 @@ func ctxConfig(args []string) error {
 }
 
 func parseBool(s string) bool {
-	return s == "on" || s == "true"
+	switch strings.ToLower(s) {
+	case "on", "true", "yes", "1", "enabled":
+		return true
+	default:
+		return false
+	}
 }
 
 // ---------------------------------------------------------------------------

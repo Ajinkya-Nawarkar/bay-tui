@@ -1,16 +1,16 @@
+// Package memory implements bay's three-layer memory system: episodic, working, and tasks.
+//
+// Episodic: append-only event log with FTS5 full-text search.
+// Working: mutable per-session state (repo, branch, summary, current task).
+// Tasks: hierarchical task tracking with parent/child relationships.
+// Summarize: async LLM summarization pipeline with retry + compaction.
+//
+// All *DB functions accept an optional *sql.DB — pass nil to use the singleton.
 package memory
 
 import (
 	"database/sql"
-	"fmt"
-
-	"bay/internal/db"
 )
-
-// GetDB returns the singleton DB connection (convenience wrapper).
-func GetDB() (*sql.DB, error) {
-	return db.Open()
-}
 
 // AppendEpisodic inserts a raw event into the episodic table.
 func AppendEpisodic(sessionID, eventType, content, paneID string) error {
@@ -19,14 +19,11 @@ func AppendEpisodic(sessionID, eventType, content, paneID string) error {
 
 // AppendEpisodicDB inserts a raw event using the given DB (or default).
 func AppendEpisodicDB(d *sql.DB, sessionID, eventType, content, paneID string) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
-	_, err := d.Exec(
+	_, err = d.Exec(
 		`INSERT INTO episodic (session_id, type, content, pane_id) VALUES (?, ?, ?, ?)`,
 		sessionID, eventType, content, nullStr(paneID),
 	)
@@ -40,12 +37,9 @@ func RecentEpisodic(sessionID string, n int) ([]EpisodicEntry, error) {
 
 // RecentEpisodicDB returns recent entries using the given DB (or default).
 func RecentEpisodicDB(d *sql.DB, sessionID string, n int) ([]EpisodicEntry, error) {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return nil, fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return nil, err
 	}
 
 	query := `SELECT id, session_id, type, content, COALESCE(pane_id, ''), timestamp
@@ -69,12 +63,9 @@ func RecentEpisodicDB(d *sql.DB, sessionID string, n int) ([]EpisodicEntry, erro
 
 // RecentSummariesDB returns the last N summary entries for a session, newest first.
 func RecentSummariesDB(d *sql.DB, sessionID string, n int) ([]EpisodicEntry, error) {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return nil, fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return nil, err
 	}
 
 	query := `SELECT id, session_id, type, content, COALESCE(pane_id, ''), timestamp
@@ -103,12 +94,9 @@ func SearchEpisodic(query string, sessionID string) ([]EpisodicEntry, error) {
 
 // SearchEpisodicDB runs FTS5 query using the given DB (or default).
 func SearchEpisodicDB(d *sql.DB, query string, sessionID string) ([]EpisodicEntry, error) {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return nil, fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return nil, err
 	}
 
 	var sqlQuery string
@@ -154,14 +142,11 @@ func DeleteSessionEpisodic(sessionID string) error {
 
 // DeleteSessionEpisodicDB deletes all episodic entries using the given DB (or default).
 func DeleteSessionEpisodicDB(d *sql.DB, sessionID string) error {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return err
 	}
-	_, err := d.Exec(`DELETE FROM episodic WHERE session_id = ?`, sessionID)
+	_, err = d.Exec(`DELETE FROM episodic WHERE session_id = ?`, sessionID)
 	return err
 }
 

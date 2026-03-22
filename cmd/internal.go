@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"bay/internal/config"
+	"bay/internal/constants"
 	"bay/internal/hooks"
 	"bay/internal/memory"
 	"bay/internal/session"
@@ -54,7 +55,7 @@ func internalCapture(paneID string) error {
 		return err
 	}
 
-	buffer, err := baytmux.CapturePaneBuffer(paneID, 100)
+	buffer, err := baytmux.CapturePaneBuffer(paneID, constants.PaneCaptureBuffer)
 	if err != nil {
 		return fmt.Errorf("capturing pane %s: %w", paneID, err)
 	}
@@ -71,8 +72,8 @@ func internalCapture(paneID string) error {
 		}
 	}
 
-	cfg, _ := config.Load()
-	if cfg == nil {
+	cfg, err := config.Load()
+	if err != nil || cfg == nil {
 		cfg = config.DefaultConfig()
 	}
 

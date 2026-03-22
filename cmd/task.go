@@ -67,7 +67,12 @@ func taskCreate(title string, parentID *int64) error {
 		return fmt.Errorf("creating task: %w", err)
 	}
 
-	tasks, _ := memory.ListTasks(s.Name)
+	tasks, err := memory.ListTasks(s.Name)
+	if err != nil {
+		// Task was created but we can't resolve its display ID
+		fmt.Printf("Created task: %s\n", title)
+		return nil
+	}
 	displayID := 0
 	for i, t := range tasks {
 		if t.ID == id {
@@ -91,7 +96,11 @@ func taskAdd(args []string) error {
 
 	for i := 0; i < len(args); i++ {
 		if args[i] == "-p" && i+1 < len(args) {
-			parentDisplayID, _ = strconv.Atoi(args[i+1])
+			parsed, parseErr := strconv.Atoi(args[i+1])
+			if parseErr != nil {
+				return fmt.Errorf("invalid parent ID: %s", args[i+1])
+			}
+			parentDisplayID = parsed
 			i++
 		} else {
 			titleParts = append(titleParts, args[i])
@@ -138,12 +147,6 @@ func taskList() error {
 	if len(tasks) == 0 {
 		fmt.Println("No tasks.")
 		return nil
-	}
-
-	// Build a map of DB ID → display ID for parent lookup
-	idToDisplay := make(map[int64]int)
-	for i, t := range tasks {
-		idToDisplay[t.ID] = i + 1
 	}
 
 	for i, t := range tasks {

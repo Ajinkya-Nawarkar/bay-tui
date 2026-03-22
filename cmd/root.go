@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/config"
+	"bay/internal/constants"
 	"bay/internal/logging"
 	"bay/internal/memory"
 	baytmux "bay/internal/tmux"
@@ -19,12 +20,12 @@ import (
 // entry that may not be installed. Without it, tmux fails to start.
 func ensureValidTerm() {
 	term := os.Getenv("TERM")
-	if term == "" || term == "xterm-256color" {
+	if term == "" || term == constants.TermFallback {
 		return
 	}
 	// Use infocmp to check if the terminfo entry exists.
 	if err := exec.Command("infocmp", term).Run(); err != nil {
-		os.Setenv("TERM", "xterm-256color")
+		os.Setenv("TERM", constants.TermFallback)
 	}
 }
 
@@ -69,7 +70,7 @@ func Root(fresh bool) error {
 	}
 
 	// Set up tmux keybindings with configured agent command
-	agentCmd := "claude"
+	agentCmd := constants.DefaultAgent
 	if cfg, err := config.Load(); err == nil && cfg.Defaults.Agent != "" {
 		agentCmd = cfg.Defaults.Agent
 	}

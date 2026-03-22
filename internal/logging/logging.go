@@ -1,3 +1,16 @@
+// Package logging provides file-based logging to ~/.bay/logs/bay.log.
+//
+// Init() is safe to call multiple times — sync.Once ensures only the first
+// invocation opens the log file. If the file cannot be opened, logging falls
+// back to stderr so callers never need to handle initialization errors.
+//
+// Log rotation happens automatically when the file exceeds a configurable size
+// threshold. Rotated files are renamed with a timestamp suffix and only the last
+// N rotated files are kept, preventing unbounded disk growth.
+//
+// All public functions (Info, Warn, Error, Debug) and Close() are thread-safe:
+// getLogger() and Close() are protected by a shared mutex so concurrent
+// goroutines (topbar TUI, background summarizers) can log without races.
 package logging
 
 import (
@@ -9,6 +22,7 @@ import (
 	"time"
 
 	"bay/internal/config"
+	"bay/internal/constants"
 )
 
 var (
@@ -23,17 +37,17 @@ var (
 func Init() {
 	once.Do(func() {
 		dir := filepath.Join(config.BayDir(), "logs")
-		os.MkdirAll(dir, 0755) // best-effort; fallback to stderr below
+		os.MkdirAll(dir, 0o755) // best-effort; fallback to stderr below
 
 		logPath := filepath.Join(dir, "bay.log")
 
-		// Rotate before opening if the file is over 5MB.
-		if info, err := os.Stat(logPath); err == nil && info.Size() > 5*1024*1024 {
+		// Rotate before opening if the file exceeds the size limit.
+		if info, err := os.Stat(logPath); err == nil && info.Size() > constants.MaxLogFileSize {
 			rotateFile(logPath)
 		}
 
 		var err error
-		file, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		file, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			logger = log.New(os.Stderr, "[bay] ", log.Ldate|log.Ltime|log.Lshortfile)
 			return
@@ -45,15 +59,15 @@ func Init() {
 
 // rotateFile renames the current log file with a timestamp suffix.
 func rotateFile(logPath string) {
-	ts := time.Now().Format("20060102-150405")
+	ts := time.Now().Format(constants.LogTimeFmt)
 	os.Rename(logPath, logPath+"."+ts)
 
 	// Clean up old rotated logs (keep last 3).
 	// filepath.Glob returns lexical order, which is chronological
 	// because the timestamp format sorts lexically.
 	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(logPath), "bay.log.*"))
-	if len(matches) > 3 {
-		for _, f := range matches[:len(matches)-3] {
+	if len(matches) > constants.MaxOldLogFiles {
+		for _, f := range matches[:len(matches)-constants.MaxOldLogFiles] {
 			os.Remove(f)
 		}
 	}
@@ -61,7 +75,10 @@ func rotateFile(logPath string) {
 
 func getLogger() *log.Logger {
 	once.Do(func() { Init() })
-	return logger
+	mu.Lock()
+	l := logger
+	mu.Unlock()
+	return l
 }
 
 // Info logs an informational message.

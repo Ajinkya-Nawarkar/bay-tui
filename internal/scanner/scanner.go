@@ -1,3 +1,8 @@
+// Package scanner discovers git repositories by scanning configured directories.
+//
+// Only top-level .git directories are found (it does not recurse into nested repos).
+// Discovered repos are returned sorted alphabetically by name.
+// Directories that cannot be read (permissions errors, broken symlinks) are silently skipped.
 package scanner
 
 import (

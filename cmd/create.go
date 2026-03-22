@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/config"
+	"bay/internal/logging"
 	"bay/internal/scanner"
 	"bay/internal/session"
 	"bay/internal/tui/create"
@@ -49,7 +50,9 @@ func InternalCreate(args []string) error {
 
 	w := finalModel.(createWrapper)
 	if w.cancelled {
-		session.ClearCreatedSession()
+		if err := session.ClearCreatedSession(); err != nil {
+			logging.Error("clearing created-session marker: %v", err)
+		}
 		os.Exit(1)
 	}
 	return nil
@@ -76,7 +79,9 @@ func (w createWrapper) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case create.DoneMsg:
 		dm := msg.(create.DoneMsg)
 		if dm.Session != nil {
-			session.SaveCreatedSession(dm.Session.Name)
+			if err := session.SaveCreatedSession(dm.Session.Name); err != nil {
+				logging.Error("saving created-session marker: %v", err)
+			}
 		}
 		return w, tea.Quit
 	case create.CancelMsg:

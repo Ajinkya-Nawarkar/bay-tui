@@ -110,6 +110,6 @@ func removeClaudeHook() bool {
 	if err != nil {
 		return false
 	}
-	os.WriteFile(settingsPath, out, 0644)
+	os.WriteFile(settingsPath, out, 0o644)
 	return true
 }

@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"strings"
 
+	"bay/internal/constants"
 	"bay/internal/tui/styles"
 )
 
 // View renders the memory viewer.
 func (m Model) View() string {
 	w := m.width
-	if w < 20 {
-		w = 80
+	if w < constants.MinTermWidth {
+		w = constants.DefaultTermWidth
 	}
 
 	var b strings.Builder

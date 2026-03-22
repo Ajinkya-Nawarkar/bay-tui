@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"bay/internal/config"
-	"bay/internal/db"
 )
 
 // RenderContext queries working_state for a session and renders slim context:
@@ -18,12 +17,9 @@ func RenderContext(sessionID, sessionNote string) (string, error) {
 // RenderContextDB renders slim context using the given DB (or default).
 // paneTaskID is the task ID assigned to the current pane (0 = none).
 func RenderContextDB(d *sql.DB, sessionID, sessionNote string, paneTaskID int) (string, error) {
-	if d == nil {
-		var err error
-		d, err = db.Open()
-		if err != nil {
-			return "", fmt.Errorf("opening db: %w", err)
-		}
+	var err error
+	if d, err = ensureDB(d); err != nil {
+		return "", err
 	}
 
 	cfg, err := config.Load()

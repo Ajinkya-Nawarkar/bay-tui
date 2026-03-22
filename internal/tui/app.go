@@ -1,3 +1,8 @@
+// Package tui implements the Bubbletea TUI layer for bay.
+//
+// App is the root model that routes between screens: topbar, setup, and memory.
+// It follows the Elm architecture: each screen has its own Model/Update/View.
+// Screen switching is driven by typed messages (DoneMsg, BackMsg, SwitchToXMsg).
 package tui
 
 import (
@@ -100,14 +105,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 
 	case screenMemory:
-		switch msg.(type) {
-		case tmemory.BackMsg:
-			// Already handled above
-		default:
-			m, cmd := a.memoryModel.Update(msg)
-			a.memoryModel = m.(tmemory.Model)
-			return a, cmd
-		}
+		m, cmd := a.memoryModel.Update(msg)
+		a.memoryModel = m.(tmemory.Model)
+		return a, cmd
 	}
 
 	return a, nil

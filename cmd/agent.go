@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"bay/internal/config"
+	"bay/internal/constants"
 	"bay/internal/session"
 )
 
@@ -18,7 +19,9 @@ func GenerateUUID() (string, error) {
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", fmt.Errorf("generating UUID: %w", err)
 	}
-	// Set version 4 and variant bits
+	// RFC 4122 version 4 UUID: set the 4 high bits of byte 6 to 0100 (version 4),
+	// and the 2 high bits of byte 8 to 10 (variant 1). This marks the UUID as
+	// randomly generated per the standard, rather than derived from a name or time.
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
@@ -56,7 +59,7 @@ func Agent(args []string) error {
 	}
 	agentCmd := cfg.Defaults.Agent
 	if agentCmd == "" {
-		agentCmd = "claude"
+		agentCmd = constants.DefaultAgent
 	}
 
 	var uuid string

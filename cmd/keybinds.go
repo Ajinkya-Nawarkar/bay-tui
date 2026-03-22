@@ -82,7 +82,7 @@ func cleanGhosttyConfig() bool {
 		cleaned = before + "\n"
 	}
 
-	if err := os.WriteFile(cfgPath, []byte(cleaned), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(cleaned), 0o644); err != nil {
 		return false
 	}
 	return true

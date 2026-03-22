@@ -58,7 +58,7 @@ func installBinary() error {
 		}
 	}
 
-	if err := os.MkdirAll(installDir(), 0755); err != nil {
+	if err := os.MkdirAll(installDir(), 0o755); err != nil {
 		return err
 	}
 
@@ -73,7 +73,7 @@ func installBinary() error {
 	}
 	defer src.Close()
 
-	dst, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+	dst, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func ensurePath() {
 	}
 
 	// Append
-	f, err := os.OpenFile(rcFile, os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(rcFile, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return
 	}
@@ -182,10 +182,10 @@ func ensureClaudeHook() {
 	settings["hooks"] = hooks
 
 	// Write back
-	os.MkdirAll(filepath.Dir(settingsPath), 0755)
+	os.MkdirAll(filepath.Dir(settingsPath), 0o755)
 	out, err := json.MarshalIndent(settings, "", "  ")
 	if err == nil {
-		os.WriteFile(settingsPath, out, 0644)
+		os.WriteFile(settingsPath, out, 0o644)
 	}
 }
 

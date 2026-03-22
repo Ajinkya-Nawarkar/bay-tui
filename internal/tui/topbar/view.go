@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"bay/internal/constants"
 	baytmux "bay/internal/tmux"
 	"bay/internal/tui/styles"
 )
@@ -14,8 +15,8 @@ import (
 // View renders the topbar.
 func (m Model) View() string {
 	w := m.width
-	if w < 20 {
-		w = 80
+	if w < constants.MinTermWidth {
+		w = constants.DefaultTermWidth
 	}
 
 	// Row 1: "bay" title + repo tabs
@@ -37,7 +38,7 @@ func (m Model) View() string {
 
 		if i == m.activeRepoIdx && !m.plusSelected {
 			if m.focused && m.focusRow == 0 {
-				label = "\u25b6" + label + "\u25c0" // ▶name (N)◀
+				label = constants.NavRight + label + constants.NavLeft // ▶name (N)◀
 				repoTabs = append(repoTabs, dot+styles.RepoTabFocused.Render(label))
 			} else {
 				repoTabs = append(repoTabs, dot+styles.RepoTabActive.Render(label))
@@ -149,10 +150,10 @@ func (m Model) renderSessionRow() string {
 	if m.mode == modeCleanup {
 		var items []string
 		start := 0
-		if m.cleanupCursor > 4 {
-			start = m.cleanupCursor - 4
+		if m.cleanupCursor > constants.CleanupPageSize-1 {
+			start = m.cleanupCursor - (constants.CleanupPageSize - 1)
 		}
-		end := start + 5
+		end := start + constants.CleanupPageSize
 		if end > len(m.cleanupSessions) {
 			end = len(m.cleanupSessions)
 		}
