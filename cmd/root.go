@@ -77,19 +77,31 @@ func Root(fresh bool) error {
 
 	// If already inside tmux, switch client to bay session instead of attaching
 	if os.Getenv("TMUX") != "" {
+		logging.Info("already inside tmux — switching client to %s", baytmux.MainSession)
 		cmd := exec.Command("tmux", "switch-client", "-t", baytmux.MainSession)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		return cmd.Run()
+		err := cmd.Run()
+		if err != nil {
+			logging.Error("switch-client failed: %v", err)
+		} else {
+			logging.Info("switch-client returned successfully")
+		}
+		return err
 	}
 
 	// Attach to the bay session (blocks until detach/exit)
+	logging.Info("attaching to bay session")
 	cmd := exec.Command("tmux", "attach-session", "-t", baytmux.MainSession)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	err = cmd.Run()
+	if err != nil {
+		logging.Error("attach-session exited: %v", err)
+	}
+	return err
 }
 
 // RunTUIDirectly loads config and runs the TUI (for --tui flag).
@@ -127,10 +139,12 @@ func runTUI() error {
 	app := tui.NewApp(cfg, firstRun)
 	logging.Info("starting bubbletea program")
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus())
-	if _, err := p.Run(); err != nil {
+	model, err := p.Run()
+	if err != nil {
 		logging.Error("bubbletea exited with error: %v", err)
 		return err
 	}
+	logging.Info("bubbletea exited cleanly (model type: %T)", model)
 
 	logging.Info("TUI exited normally — killing main session")
 	// When the TUI exits (q), kill the whole bay session
