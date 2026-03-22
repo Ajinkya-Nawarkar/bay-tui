@@ -15,6 +15,7 @@ import (
 
 	"bay/internal/config"
 	"bay/internal/hooks"
+	"bay/internal/logging"
 	"bay/internal/scanner"
 	"bay/internal/session"
 	baytmux "bay/internal/tmux"
@@ -112,9 +113,11 @@ type Model struct {
 
 // New creates a new topbar model.
 func New(cfg *config.Config) Model {
+	logging.Info("topbar.New: initializing (repos=%d scanDirs=%v)", len(cfg.ScanDirs), cfg.ScanDirs)
 	m := newModel(cfg)
 	baytmux.InitTopbarPaneID()
 	m.refresh()
+	logging.Info("topbar.New: loaded %d repos, %d sessions", len(m.repos), len(m.sessions))
 	return m
 }
 
@@ -509,6 +512,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					hooks.SyncPaneLayout(s.Name, s.TmuxWindow)
 				}
 			}
+			logging.Info("user quit — killing main session")
 			baytmux.KillMainSession()
 			return m, tea.Quit
 		case "esc":
@@ -705,11 +709,14 @@ func (m Model) activateCurrentSession() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) activateSession(s *session.Session) (tea.Model, tea.Cmd) {
+	logging.Info("activating session %q (repo=%s, window=%d)", s.Name, s.Repo, s.TmuxWindow)
 	if isSessionStale(s) {
+		logging.Warn("session %q has missing directory: %s", s.Name, s.WorkingDir)
 		m.statusMsg = "Session directory missing — delete with d"
 		return m, clearStatusAfter(3 * time.Second)
 	}
 	if err := m.switchToSession(s); err != nil {
+		logging.Error("switchToSession %q: %v", s.Name, err)
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
 		return m, clearStatusAfter(3 * time.Second)
 	}

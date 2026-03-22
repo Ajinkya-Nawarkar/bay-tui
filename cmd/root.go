@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/config"
+	"bay/internal/logging"
 	"bay/internal/memory"
 	baytmux "bay/internal/tmux"
 	"bay/internal/tui"
@@ -30,6 +31,9 @@ func ensureValidTerm() {
 // Root is the main `bay` command handler.
 // If fresh is true, kills the existing bay session first.
 func Root(fresh bool) error {
+	logging.Init()
+	logging.Info("bay starting (fresh=%v)", fresh)
+
 	// Check tmux is installed
 	if _, err := exec.LookPath("tmux"); err != nil {
 		return fmt.Errorf("tmux is required but not found. Install with: brew install tmux")
@@ -58,7 +62,9 @@ func Root(fresh bool) error {
 	}
 
 	// Create (or respawn) the bay tmux session with topbar layout
+	logging.Info("creating main session with topbar cmd: %s --tui", bayBin)
 	if err := baytmux.CreateMainSession(bayBin + " --tui"); err != nil {
+		logging.Error("creating bay session: %v", err)
 		return fmt.Errorf("creating bay session: %w", err)
 	}
 
@@ -93,11 +99,16 @@ func RunTUIDirectly() error {
 
 // runTUI starts the Bubbletea app directly.
 func runTUI() error {
+	logging.Init()
+	logging.Info("TUI starting (pid=%d)", os.Getpid())
+
 	firstRun := !config.Exists()
 	var cfg *config.Config
 
 	if firstRun {
+		logging.Info("first run — creating dirs and default config")
 		if err := config.EnsureDirs(); err != nil {
+			logging.Error("EnsureDirs: %v", err)
 			return err
 		}
 		cfg = config.DefaultConfig()
@@ -105,6 +116,7 @@ func runTUI() error {
 		var err error
 		cfg, err = config.Load()
 		if err != nil {
+			logging.Error("config.Load: %v", err)
 			return err
 		}
 	}
@@ -113,11 +125,14 @@ func runTUI() error {
 	go memory.ProcessPendingSummaries()
 
 	app := tui.NewApp(cfg, firstRun)
+	logging.Info("starting bubbletea program")
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus())
 	if _, err := p.Run(); err != nil {
+		logging.Error("bubbletea exited with error: %v", err)
 		return err
 	}
 
+	logging.Info("TUI exited normally — killing main session")
 	// When the TUI exits (q), kill the whole bay session
 	baytmux.KillMainSession()
 	return nil

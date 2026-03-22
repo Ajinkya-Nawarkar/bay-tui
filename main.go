@@ -5,11 +5,21 @@ import (
 	"os"
 
 	"bay/cmd"
+	"bay/internal/logging"
 )
 
 var Version = "dev"
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Error("PANIC: %v", r)
+			fmt.Fprintf(os.Stderr, "bay crashed: %v\n", r)
+			os.Exit(1)
+		}
+		logging.Close()
+	}()
+
 	args := os.Args[1:]
 
 	if len(args) == 0 {
