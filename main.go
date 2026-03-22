@@ -11,11 +11,15 @@ import (
 var Version = "dev"
 
 func main() {
+	os.Exit(run())
+}
+
+func run() (exitCode int) {
 	defer func() {
 		if r := recover(); r != nil {
 			logging.Error("PANIC: %v", r)
 			fmt.Fprintf(os.Stderr, "bay crashed: %v\n", r)
-			os.Exit(1)
+			exitCode = 1
 		}
 		logging.Close()
 	}()
@@ -25,90 +29,90 @@ func main() {
 	if len(args) == 0 {
 		if err := cmd.Root(false); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
-		return
+		return 0
 	}
 
 	switch args[0] {
 	case "-f", "--fresh":
 		if err := cmd.Root(true); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "--tui":
 		// Internal flag: run TUI directly (called from within tmux)
 		if err := cmd.RunTUIDirectly(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "setup":
 		if err := cmd.Setup(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "ctx":
 		if err := cmd.Ctx(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "internal":
 		if err := cmd.Internal(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "session":
 		if err := cmd.SessionCmd(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "task":
 		if err := cmd.Task(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "agent":
 		if err := cmd.Agent(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "keybinds":
 		if err := cmd.Keybinds(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "build":
 		if err := cmd.Build(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "upgrade":
 		if err := cmd.Upgrade(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "uninstall":
 		if err := cmd.Uninstall(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "sync-panes":
 		// Legacy alias — routes to bay internal sync-panes
 		if err := cmd.Internal([]string{"sync-panes"}); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 
 	case "version", "--version", "-v":
@@ -121,8 +125,10 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", args[0])
 		printHelp()
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }
 
 func printHelp() {

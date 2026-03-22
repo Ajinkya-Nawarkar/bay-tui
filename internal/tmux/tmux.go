@@ -703,7 +703,8 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 		}
 	}
 	if firstPane == "" {
-		firstPane = fmt.Sprintf("%s:%d.0", MainSession, windowIndex)
+		// No non-topbar pane found — nothing to recreate into.
+		return nil
 	}
 
 	for i, p := range panes {

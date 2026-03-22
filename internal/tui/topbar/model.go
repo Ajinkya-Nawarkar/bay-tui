@@ -285,10 +285,6 @@ func (m *Model) activeRepoName() string {
 // Init is the Bubbletea init function.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
-		// Delay auto-activate so the outer bay process has time to attach
-		// the tmux client. Without this, the topbar moves out of window 0
-		// before the client attaches, and window 0's destruction can kill
-		// the session.
 		func() tea.Msg { return autoActivateMsg{} },
 		tea.Tick(2*time.Second, func(time.Time) tea.Msg { return agentTickMsg{} }),
 	)

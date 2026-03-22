@@ -139,15 +139,14 @@ func runTUI() error {
 	app := tui.NewApp(cfg, firstRun)
 	logging.Info("starting bubbletea program")
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus())
-	model, err := p.Run()
-	if err != nil {
+	if _, err := p.Run(); err != nil {
 		logging.Error("bubbletea exited with error: %v", err)
 		return err
 	}
-	logging.Info("bubbletea exited cleanly (model type: %T)", model)
 
-	logging.Info("TUI exited normally — killing main session")
-	// When the TUI exits (q), kill the whole bay session
+	// The topbar's quit handler (q key) already calls KillMainSession before
+	// tea.Quit. This is a safety net for other exit paths (e.g., Ctrl+C).
+	logging.Info("TUI exited — ensuring main session is cleaned up")
 	baytmux.KillMainSession()
 	return nil
 }
