@@ -686,14 +686,35 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 // The first pane already exists (created by CreateSessionWindow). If it should
 // be an agent, we send the claude command to it. Additional panes are split.
 func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
-	firstPane := fmt.Sprintf("%s:%d.0", MainSession, windowIndex)
+	// Find the first non-topbar pane — the topbar is moved into the window
+	// before recreation, so pane 0 may be the topbar rather than the shell.
+	topbarID := TopbarPaneTarget()
+	firstPane := ""
+	sep := "%%BAY%%"
+	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex),
+		"-F", fmt.Sprintf("#{pane_id}%s#{pane_index}", sep))
+	if err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			parts := strings.SplitN(strings.TrimSpace(line), sep, 2)
+			if len(parts) == 2 && parts[0] != topbarID {
+				firstPane = fmt.Sprintf("%s:%d.%s", MainSession, windowIndex, parts[1])
+				break
+			}
+		}
+	}
+	if firstPane == "" {
+		firstPane = fmt.Sprintf("%s:%d.0", MainSession, windowIndex)
+	}
 
 	for i, p := range panes {
 		if i == 0 {
 			// First pane already exists — launch agent if needed, set title
 			if p.Type == "agent" {
 				agentCmd := agentLaunchCmd(p.AgentSessionID)
-				run("send-keys", "-t", firstPane, agentCmd, "Enter")
+				// Use respawn-pane to replace the shell directly instead of
+				// send-keys. send-keys races with shell initialization and
+				// can cause claude to crash in the half-ready environment.
+				run("respawn-pane", "-k", "-t", firstPane, agentCmd)
 			}
 			if p.Title != "" {
 				run("select-pane", "-t", firstPane, "-T", p.Title)
@@ -780,13 +801,14 @@ func EnsureDevPane(windowIndex int, dir string) error {
 		return nil // Dev panes still exist — nothing to do
 	}
 
-	// No dev panes remain — split a new agent pane below the topbar.
+	// No dev panes remain — split a plain shell so the session isn't stuck.
+	// Spawning an agent here would cause a death spiral if the agent crashes
+	// immediately (pane-exited → ensure-pane → agent → crash → repeat).
 	target := fmt.Sprintf("%s:%d", MainSession, windowIndex)
 	args := []string{"split-window", "-v", "-t", target}
 	if dir != "" {
 		args = append(args, "-c", dir)
 	}
-	args = append(args, "bash", "-c", "bay agent")
 	if _, err := run(args...); err != nil {
 		return fmt.Errorf("ensure-dev-pane split-window: %w", err)
 	}

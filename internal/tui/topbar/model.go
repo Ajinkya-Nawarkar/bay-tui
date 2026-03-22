@@ -285,6 +285,10 @@ func (m *Model) activeRepoName() string {
 // Init is the Bubbletea init function.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
+		// Delay auto-activate so the outer bay process has time to attach
+		// the tmux client. Without this, the topbar moves out of window 0
+		// before the client attaches, and window 0's destruction can kill
+		// the session.
 		func() tea.Msg { return autoActivateMsg{} },
 		tea.Tick(2*time.Second, func(time.Time) tea.Msg { return agentTickMsg{} }),
 	)
@@ -750,7 +754,9 @@ func (m *Model) switchToSession(s *session.Session) error {
 	windowIdx := s.TmuxWindow
 	logging.Info("switchToSession %q: saved window=%d, exists=%v", s.Name, windowIdx, windowIdx != 0 && baytmux.WindowExists(windowIdx))
 
+	coldBoot := false
 	if windowIdx == 0 || !baytmux.WindowExists(windowIdx) {
+		coldBoot = true
 		idx, err := baytmux.CreateSessionWindow(s.WorkingDir)
 		if err != nil {
 			return fmt.Errorf("creating window: %w", err)
@@ -758,36 +764,32 @@ func (m *Model) switchToSession(s *session.Session) error {
 		windowIdx = idx
 		s.TmuxWindow = idx
 		logging.Info("switchToSession %q: created new window %d", s.Name, windowIdx)
-
-		// Recreate panes from saved layout (cold boot recovery)
-		if len(s.Panes) > 0 {
-			var tmuxPanes []baytmux.SessionPane
-			for _, p := range s.Panes {
-				// Downgrade agent panes to shell on cold boot — agent startup
-				// can race with the topbar move and kill the session.
-				paneType := p.Type
-				if paneType == "agent" {
-					paneType = "shell"
-				}
-				tmuxPanes = append(tmuxPanes, baytmux.SessionPane{
-					Type:    paneType,
-					Cwd:     p.Cwd,
-					Command: p.Command,
-					Title:   p.Title,
-				})
-			}
-			baytmux.RecreateSessionPanes(windowIdx, tmuxPanes)
-			logging.Info("switchToSession %q: recreated %d panes (agents downgraded to shell)", s.Name, len(tmuxPanes))
-		}
-
 		session.Save(s)
 	}
 
+	// Move topbar into the window BEFORE recreating agent panes.
+	// The topbar anchors the window — if an agent pane crashes immediately,
+	// the window (and session) stays alive.
 	logging.Info("switchToSession %q: moving topbar to window %d", s.Name, windowIdx)
 	if err := baytmux.MoveTopbarToWindow(windowIdx); err != nil {
 		return fmt.Errorf("moving topbar: %w", err)
 	}
 	logging.Info("switchToSession %q: topbar moved, switching to window %d", s.Name, windowIdx)
+
+	// Recreate panes after the topbar is safely in the window.
+	if coldBoot && len(s.Panes) > 0 {
+		var tmuxPanes []baytmux.SessionPane
+		for _, p := range s.Panes {
+			tmuxPanes = append(tmuxPanes, baytmux.SessionPane{
+				Type:    p.Type,
+				Cwd:     p.Cwd,
+				Command: p.Command,
+				Title:   p.Title,
+			})
+		}
+		baytmux.RecreateSessionPanes(windowIdx, tmuxPanes)
+		logging.Info("switchToSession %q: recreated %d panes", s.Name, len(tmuxPanes))
+	}
 
 	if err := baytmux.SwitchToWindow(windowIdx); err != nil {
 		return fmt.Errorf("switching window: %w", err)
