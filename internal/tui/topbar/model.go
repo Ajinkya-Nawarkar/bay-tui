@@ -785,6 +785,7 @@ func (m *Model) switchToSession(s *session.Session) error {
 			})
 		}
 		baytmux.RecreateSessionPanes(windowIdx, tmuxPanes)
+		hooks.SyncPaneLayout(s.Name, windowIdx)
 		logging.Info("switchToSession %q: recreated %d panes", s.Name, len(tmuxPanes))
 	}
 
