@@ -15,6 +15,7 @@ import (
 
 	"bay/internal/config"
 	"bay/internal/hooks"
+	"bay/internal/logging"
 	"bay/internal/scanner"
 	"bay/internal/session"
 	baytmux "bay/internal/tmux"
@@ -112,9 +113,11 @@ type Model struct {
 
 // New creates a new topbar model.
 func New(cfg *config.Config) Model {
+	logging.Info("topbar.New: initializing (repos=%d scanDirs=%v)", len(cfg.ScanDirs), cfg.ScanDirs)
 	m := newModel(cfg)
 	baytmux.InitTopbarPaneID()
 	m.refresh()
+	logging.Info("topbar.New: loaded %d repos, %d sessions", len(m.repos), len(m.sessions))
 	return m
 }
 
@@ -509,6 +512,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					hooks.SyncPaneLayout(s.Name, s.TmuxWindow)
 				}
 			}
+			logging.Info("user quit — killing main session")
 			baytmux.KillMainSession()
 			return m, tea.Quit
 		case "esc":
@@ -705,11 +709,14 @@ func (m Model) activateCurrentSession() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) activateSession(s *session.Session) (tea.Model, tea.Cmd) {
+	logging.Info("activating session %q (repo=%s, window=%d)", s.Name, s.Repo, s.TmuxWindow)
 	if isSessionStale(s) {
+		logging.Warn("session %q has missing directory: %s", s.Name, s.WorkingDir)
 		m.statusMsg = "Session directory missing — delete with d"
 		return m, clearStatusAfter(3 * time.Second)
 	}
 	if err := m.switchToSession(s); err != nil {
+		logging.Error("switchToSession %q: %v", s.Name, err)
 		m.statusMsg = fmt.Sprintf("Error: %v", err)
 		return m, clearStatusAfter(3 * time.Second)
 	}
@@ -741,39 +748,51 @@ func (m *Model) switchToSession(s *session.Session) error {
 	}
 
 	windowIdx := s.TmuxWindow
+	logging.Info("switchToSession %q: saved window=%d, exists=%v", s.Name, windowIdx, windowIdx != 0 && baytmux.WindowExists(windowIdx))
 
+	coldBoot := false
 	if windowIdx == 0 || !baytmux.WindowExists(windowIdx) {
+		coldBoot = true
 		idx, err := baytmux.CreateSessionWindow(s.WorkingDir)
 		if err != nil {
 			return fmt.Errorf("creating window: %w", err)
 		}
 		windowIdx = idx
 		s.TmuxWindow = idx
-
-		// Recreate panes from saved layout (cold boot recovery)
-		if len(s.Panes) > 0 {
-			var tmuxPanes []baytmux.SessionPane
-			for _, p := range s.Panes {
-				tmuxPanes = append(tmuxPanes, baytmux.SessionPane{
-					Type:    p.Type,
-					Cwd:     p.Cwd,
-					Command: p.Command,
-					Title:   p.Title,
-				})
-			}
-			baytmux.RecreateSessionPanes(windowIdx, tmuxPanes)
-		}
-
+		logging.Info("switchToSession %q: created new window %d", s.Name, windowIdx)
 		session.Save(s)
 	}
 
+	// Move topbar into the window BEFORE recreating agent panes.
+	// The topbar anchors the window — if an agent pane crashes immediately,
+	// the window (and session) stays alive.
+	logging.Info("switchToSession %q: moving topbar to window %d", s.Name, windowIdx)
 	if err := baytmux.MoveTopbarToWindow(windowIdx); err != nil {
 		return fmt.Errorf("moving topbar: %w", err)
+	}
+	logging.Info("switchToSession %q: topbar moved, switching to window %d", s.Name, windowIdx)
+
+	// Recreate panes after the topbar is safely in the window.
+	if coldBoot && len(s.Panes) > 0 {
+		var tmuxPanes []baytmux.SessionPane
+		for _, p := range s.Panes {
+			tmuxPanes = append(tmuxPanes, baytmux.SessionPane{
+				Type:           p.Type,
+				Cwd:            p.Cwd,
+				Command:        p.Command,
+				Title:          p.Title,
+				AgentSessionID: p.AgentSessionID,
+			})
+		}
+		baytmux.RecreateSessionPanes(windowIdx, tmuxPanes)
+		hooks.SyncPaneLayout(s.Name, windowIdx)
+		logging.Info("switchToSession %q: recreated %d panes", s.Name, len(tmuxPanes))
 	}
 
 	if err := baytmux.SwitchToWindow(windowIdx); err != nil {
 		return fmt.Errorf("switching window: %w", err)
 	}
+	logging.Info("switchToSession %q: switch complete", s.Name)
 
 	baytmux.FocusTopbarPane()
 

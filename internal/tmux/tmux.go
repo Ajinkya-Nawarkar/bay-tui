@@ -403,7 +403,6 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	// after-split-window and after-kill-pane also sync pane layout to session YAML
 	// so that pane state is persisted immediately, not just on session deactivation.
 	syncPanes := "bay internal sync-panes &"
-	clearTitle := "tmux select-pane -T ''"
 	for _, hook := range []string{"after-select-window", "client-session-changed"} {
 		run("set-hook", "-g", hook,
 			fmt.Sprintf("run-shell '%s'", resizeTopbar))
@@ -412,8 +411,7 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	run("set-hook", "-g", "after-kill-pane",
 		fmt.Sprintf("run-shell '%s; %s'", resizeTopbar, ensurePane))
 	// Clear title on new panes so they fall back to directory basename in the border.
-	run("set-hook", "-g", "after-split-window",
-		fmt.Sprintf("run-shell '%s; %s; %s'", clearTitle, resizeTopbar, syncPanes))
+	run("set-hook", "-g", "after-split-window", afterSplitHookCmd())
 
 	// Backtick as a second prefix
 	run("set-option", "-g", "prefix2", "`")
@@ -493,6 +491,20 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 		"run-shell 'bay internal capture #{pane_id} &; bay internal ensure-pane &'")
 
 	return nil
+}
+
+// afterSplitHookCmd returns the run-shell command for the after-split-window hook.
+func afterSplitHookCmd() string {
+	topbarIDFile := "$HOME/.bay/.topbar-pane-id"
+	resizeTopbar := fmt.Sprintf("tmux resize-pane -t $(cat %s) -y %s 2>/dev/null || true", topbarIDFile, TopbarHeight)
+	return fmt.Sprintf("run-shell '%s; %s; %s'",
+		"tmux select-pane -T ''", resizeTopbar, "bay internal sync-panes &")
+}
+
+// restoreAfterSplitHook re-sets the after-split-window hook after it was
+// temporarily removed (e.g., during pane recreation).
+func restoreAfterSplitHook() {
+	run("set-hook", "-g", "after-split-window", afterSplitHookCmd())
 }
 
 // ListWindowIndices returns all window indices in the bay session.
@@ -686,14 +698,42 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 // The first pane already exists (created by CreateSessionWindow). If it should
 // be an agent, we send the claude command to it. Additional panes are split.
 func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
-	firstPane := fmt.Sprintf("%s:%d.0", MainSession, windowIndex)
+	// Suppress after-split-window hook during recreation to prevent
+	// sync-panes from writing partial pane layouts to the session YAML.
+	// Restored after all panes are created; the caller does a final sync.
+	run("set-hook", "-gu", "after-split-window")
+	defer restoreAfterSplitHook()
+
+	// Find the first non-topbar pane — the topbar is moved into the window
+	// before recreation, so pane 0 may be the topbar rather than the shell.
+	topbarID := TopbarPaneTarget()
+	firstPane := ""
+	sep := "%%BAY%%"
+	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex),
+		"-F", fmt.Sprintf("#{pane_id}%s#{pane_index}", sep))
+	if err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			parts := strings.SplitN(strings.TrimSpace(line), sep, 2)
+			if len(parts) == 2 && parts[0] != topbarID {
+				firstPane = fmt.Sprintf("%s:%d.%s", MainSession, windowIndex, parts[1])
+				break
+			}
+		}
+	}
+	if firstPane == "" {
+		// No non-topbar pane found — nothing to recreate into.
+		return nil
+	}
 
 	for i, p := range panes {
 		if i == 0 {
 			// First pane already exists — launch agent if needed, set title
 			if p.Type == "agent" {
 				agentCmd := agentLaunchCmd(p.AgentSessionID)
-				run("send-keys", "-t", firstPane, agentCmd, "Enter")
+				// Use respawn-pane to replace the shell directly instead of
+				// send-keys. send-keys races with shell initialization and
+				// can cause claude to crash in the half-ready environment.
+				run("respawn-pane", "-k", "-t", firstPane, agentCmd)
 			}
 			if p.Title != "" {
 				run("select-pane", "-t", firstPane, "-T", p.Title)
@@ -708,14 +748,11 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 			continue
 		}
 
-		var command string
-		if p.Type == "agent" {
-			command = fmt.Sprintf("bash -c \"%s\"", agentLaunchCmd(p.AgentSessionID))
-		}
-
 		args := []string{"split-window", "-h", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex), "-c", dir}
-		if command != "" {
-			args = append(args, command)
+		if p.Type == "agent" {
+			// split-window runs the command directly as the pane process —
+			// no bash -c wrapper needed.
+			args = append(args, agentLaunchCmd(p.AgentSessionID))
 		}
 		if _, err := run(args...); err != nil {
 			continue // Non-fatal: best-effort recreation
@@ -780,13 +817,14 @@ func EnsureDevPane(windowIndex int, dir string) error {
 		return nil // Dev panes still exist — nothing to do
 	}
 
-	// No dev panes remain — split a new agent pane below the topbar.
+	// No dev panes remain — split a plain shell so the session isn't stuck.
+	// Spawning an agent here would cause a death spiral if the agent crashes
+	// immediately (pane-exited → ensure-pane → agent → crash → repeat).
 	target := fmt.Sprintf("%s:%d", MainSession, windowIndex)
 	args := []string{"split-window", "-v", "-t", target}
 	if dir != "" {
 		args = append(args, "-c", dir)
 	}
-	args = append(args, "bash", "-c", "bay agent")
 	if _, err := run(args...); err != nil {
 		return fmt.Errorf("ensure-dev-pane split-window: %w", err)
 	}

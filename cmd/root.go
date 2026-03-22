@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/config"
+	"bay/internal/logging"
 	"bay/internal/memory"
 	baytmux "bay/internal/tmux"
 	"bay/internal/tui"
@@ -30,6 +31,9 @@ func ensureValidTerm() {
 // Root is the main `bay` command handler.
 // If fresh is true, kills the existing bay session first.
 func Root(fresh bool) error {
+	logging.Init()
+	logging.Info("bay starting (fresh=%v)", fresh)
+
 	// Check tmux is installed
 	if _, err := exec.LookPath("tmux"); err != nil {
 		return fmt.Errorf("tmux is required but not found. Install with: brew install tmux")
@@ -58,7 +62,9 @@ func Root(fresh bool) error {
 	}
 
 	// Create (or respawn) the bay tmux session with topbar layout
+	logging.Info("creating main session with topbar cmd: %s --tui", bayBin)
 	if err := baytmux.CreateMainSession(bayBin + " --tui"); err != nil {
+		logging.Error("creating bay session: %v", err)
 		return fmt.Errorf("creating bay session: %w", err)
 	}
 
@@ -71,19 +77,31 @@ func Root(fresh bool) error {
 
 	// If already inside tmux, switch client to bay session instead of attaching
 	if os.Getenv("TMUX") != "" {
+		logging.Info("already inside tmux — switching client to %s", baytmux.MainSession)
 		cmd := exec.Command("tmux", "switch-client", "-t", baytmux.MainSession)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		return cmd.Run()
+		err := cmd.Run()
+		if err != nil {
+			logging.Error("switch-client failed: %v", err)
+		} else {
+			logging.Info("switch-client returned successfully")
+		}
+		return err
 	}
 
 	// Attach to the bay session (blocks until detach/exit)
+	logging.Info("attaching to bay session")
 	cmd := exec.Command("tmux", "attach-session", "-t", baytmux.MainSession)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	err = cmd.Run()
+	if err != nil {
+		logging.Error("attach-session exited: %v", err)
+	}
+	return err
 }
 
 // RunTUIDirectly loads config and runs the TUI (for --tui flag).
@@ -93,11 +111,16 @@ func RunTUIDirectly() error {
 
 // runTUI starts the Bubbletea app directly.
 func runTUI() error {
+	logging.Init()
+	logging.Info("TUI starting (pid=%d)", os.Getpid())
+
 	firstRun := !config.Exists()
 	var cfg *config.Config
 
 	if firstRun {
+		logging.Info("first run — creating dirs and default config")
 		if err := config.EnsureDirs(); err != nil {
+			logging.Error("EnsureDirs: %v", err)
 			return err
 		}
 		cfg = config.DefaultConfig()
@@ -105,6 +128,7 @@ func runTUI() error {
 		var err error
 		cfg, err = config.Load()
 		if err != nil {
+			logging.Error("config.Load: %v", err)
 			return err
 		}
 	}
@@ -113,12 +137,16 @@ func runTUI() error {
 	go memory.ProcessPendingSummaries()
 
 	app := tui.NewApp(cfg, firstRun)
+	logging.Info("starting bubbletea program")
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus())
 	if _, err := p.Run(); err != nil {
+		logging.Error("bubbletea exited with error: %v", err)
 		return err
 	}
 
-	// When the TUI exits (q), kill the whole bay session
+	// The topbar's quit handler (q key) already calls KillMainSession before
+	// tea.Quit. This is a safety net for other exit paths (e.g., Ctrl+C).
+	logging.Info("TUI exited — ensuring main session is cleaned up")
 	baytmux.KillMainSession()
 	return nil
 }
