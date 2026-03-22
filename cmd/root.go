@@ -8,7 +8,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/config"
-	bayctx "bay/internal/context"
 	"bay/internal/memory"
 	baytmux "bay/internal/tmux"
 	"bay/internal/tui"
@@ -109,14 +108,6 @@ func runTUI() error {
 			return err
 		}
 	}
-
-	// Ensure built-in context files exist
-	bayctx.EnsureBuiltinRules(nil)
-
-	// Set up lazy-loading resource navigator
-	bayctx.EnsureResourceDirs()
-	bayctx.GenerateNavigator()
-	bayctx.GenerateAllIndexes()
 
 	// Process any pending LLM summaries from prior crashes/restarts
 	go memory.ProcessPendingSummaries()

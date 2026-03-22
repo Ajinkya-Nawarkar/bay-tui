@@ -11,7 +11,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/config"
-	bayctx "bay/internal/context"
 )
 
 type step int
@@ -288,8 +287,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				installBinary()
 				// Auto-configure Claude Code SessionStart hook
 				ensureClaudeHook()
-				// Add pointer to ~/.bay/CLAUDE.md in ~/.claude/CLAUDE.md
-				ensureBayPointer()
 				m.step = stepDone
 				return m, nil
 			case "ctrl+c":
@@ -312,7 +309,3 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// ensureBayPointer adds the bay resource pointer to ~/.claude/CLAUDE.md.
-func ensureBayPointer() {
-	bayctx.EnsureClaudeMDPointer()
-}

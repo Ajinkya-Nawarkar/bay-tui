@@ -86,17 +86,6 @@ func migrate(db *sql.DB) error {
 			last_updated     DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 
-		// Procedural Memory: context files (rules, docs, standards, etc.)
-		`CREATE TABLE IF NOT EXISTS context_files (
-			name        TEXT PRIMARY KEY,
-			path        TEXT NOT NULL,
-			scope       TEXT DEFAULT 'global',
-			enabled     BOOLEAN DEFAULT 1,
-			category    TEXT DEFAULT 'rules',
-			type        TEXT DEFAULT 'rules',
-			description TEXT DEFAULT ''
-		)`,
-
 		// Pending summaries: raw buffers awaiting async LLM summarization
 		`CREATE TABLE IF NOT EXISTS pending_summaries (
 			id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -156,8 +145,6 @@ func migrate(db *sql.DB) error {
 	// These are try-and-ignore — they fail silently on fresh installs where
 	// CREATE TABLE already includes the columns.
 	db.Exec(`ALTER TABLE episodic ADD COLUMN agent_session_id TEXT`)
-	db.Exec(`ALTER TABLE context_files ADD COLUMN type TEXT DEFAULT 'rules'`)
-	db.Exec(`ALTER TABLE context_files ADD COLUMN description TEXT DEFAULT ''`)
 
 	return nil
 }
