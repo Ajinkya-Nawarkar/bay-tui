@@ -211,6 +211,21 @@ func TopbarPaneTarget() string {
 	return MainSession + ":0.0"
 }
 
+// TopbarWindowIndex returns the tmux window index containing the topbar pane.
+// Returns -1 if the topbar pane is dead or not found.
+func TopbarWindowIndex() int {
+	target := TopbarPaneTarget()
+	out, err := run("display-message", "-t", target, "-p", "#{window_index}")
+	if err != nil {
+		return -1
+	}
+	idx, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return -1
+	}
+	return idx
+}
+
 // KillMainSession kills the entire bay session.
 func KillMainSession() error {
 	_, err := run("kill-session", "-t", MainSession)
@@ -875,11 +890,18 @@ func EnsureDevPane(windowIndex int, dir string) error {
 // RestartTopbar restarts the topbar pane using respawn-pane.
 // This cleanly replaces the TUI process while keeping the pane alive,
 // triggering the bash restart loop to launch a fresh TUI.
+// If the topbar pane is dead (respawn fails), falls back to CreateMainSession
+// which spawns a fresh topbar pane.
 func RestartTopbar(topbarCmd string) error {
 	target := TopbarPaneTarget()
 	wrapped := wrapTopbarCmd(topbarCmd)
-	_, err := run("respawn-pane", "-k", "-t", target, "bash", "-c", wrapped)
-	return err
+	if _, err := run("respawn-pane", "-k", "-t", target, "bash", "-c", wrapped); err != nil {
+		// Topbar pane is dead — recreate it via CreateMainSession
+		if err2 := CreateMainSession(topbarCmd); err2 != nil {
+			return fmt.Errorf("respawn failed (%w), recreate also failed: %w", err, err2)
+		}
+	}
+	return nil
 }
 
 // ListBaySessions is kept for compatibility.

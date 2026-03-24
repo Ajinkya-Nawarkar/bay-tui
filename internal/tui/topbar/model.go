@@ -885,7 +885,11 @@ func (m Model) updateConfirmDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if s.TmuxWindow != 0 && baytmux.WindowExists(s.TmuxWindow) {
 				// Move topbar out before killing to avoid killing it along with the window.
 				topbarWindow = baytmux.BreakTopbarToOwnWindow()
-				baytmux.KillWindow(s.TmuxWindow)
+				if topbarWindow >= 0 {
+					baytmux.KillWindow(s.TmuxWindow)
+				} else {
+					logging.Warn("BreakTopbarToOwnWindow failed during delete of %q — skipping KillWindow to protect topbar", m.deleteTarget)
+				}
 			}
 			if s.IsWorktree && s.WorktreeBranch != "" {
 				worktree.Remove(s.RepoPath, s.Repo, s.WorktreeBranch)
@@ -1129,8 +1133,11 @@ func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.mode = modeNormal
 
 	// Break topbar out before killing the settings window
-	baytmux.BreakTopbarToOwnWindow()
-	baytmux.KillWindow(m.settingsWindowIdx)
+	if baytmux.BreakTopbarToOwnWindow() >= 0 {
+		baytmux.KillWindow(m.settingsWindowIdx)
+	} else {
+		logging.Warn("BreakTopbarToOwnWindow failed during settings close — skipping KillWindow to protect topbar")
+	}
 
 	// Move topbar back to original session window
 	if m.prevWindowIdx > 0 && baytmux.WindowExists(m.prevWindowIdx) {
@@ -1214,8 +1221,11 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Success — session was created
 		m.mode = modeNormal
 
-		baytmux.BreakTopbarToOwnWindow()
-		baytmux.KillWindow(m.createWindowIdx)
+		if baytmux.BreakTopbarToOwnWindow() >= 0 {
+			baytmux.KillWindow(m.createWindowIdx)
+		} else {
+			logging.Warn("BreakTopbarToOwnWindow failed during create — skipping KillWindow to protect topbar")
+		}
 
 		// Move topbar back
 		if m.prevWindowIdx > 0 && baytmux.WindowExists(m.prevWindowIdx) {
@@ -1262,8 +1272,11 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Cancel — user escaped the wizard
 		m.mode = modeNormal
 
-		baytmux.BreakTopbarToOwnWindow()
-		baytmux.KillWindow(m.createWindowIdx)
+		if baytmux.BreakTopbarToOwnWindow() >= 0 {
+			baytmux.KillWindow(m.createWindowIdx)
+		} else {
+			logging.Warn("BreakTopbarToOwnWindow failed during create cancel — skipping KillWindow to protect topbar")
+		}
 
 		// Move topbar back
 		if m.prevWindowIdx > 0 && baytmux.WindowExists(m.prevWindowIdx) {
@@ -1431,8 +1444,11 @@ func (m Model) updateCleanup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			loaded, err := session.Load(s.Name)
 			if err == nil {
 				if loaded.TmuxWindow != 0 && baytmux.WindowExists(loaded.TmuxWindow) {
-					baytmux.BreakTopbarToOwnWindow()
-					baytmux.KillWindow(loaded.TmuxWindow)
+					if baytmux.BreakTopbarToOwnWindow() >= 0 {
+						baytmux.KillWindow(loaded.TmuxWindow)
+					} else {
+						logging.Warn("BreakTopbarToOwnWindow failed during cleanup of %q — skipping KillWindow", s.Name)
+					}
 				}
 				if loaded.IsWorktree && loaded.WorktreeBranch != "" {
 					worktree.Remove(loaded.RepoPath, loaded.Repo, loaded.WorktreeBranch)

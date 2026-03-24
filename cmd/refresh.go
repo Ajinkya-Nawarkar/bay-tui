@@ -42,7 +42,7 @@ func Refresh() error {
 	baytmux.BindKeys(agentCmd)
 	fmt.Println("Rebound keybindings")
 
-	// Restart topbar via respawn-pane (triggers the bash restart loop)
+	// Restart topbar — tries respawn-pane first, falls back to recreating the pane
 	topbarCmd := bayBin + " --tui"
 	if err := baytmux.RestartTopbar(topbarCmd); err != nil {
 		return fmt.Errorf("restarting topbar: %w", err)

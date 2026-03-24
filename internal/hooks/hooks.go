@@ -213,7 +213,7 @@ func SyncPaneLayout(sessionName string, windowIdx int) {
 }
 
 // CleanOrphanWindows kills tmux windows that don't belong to any saved session.
-// Window 0 is always preserved as the topbar's fallback.
+// Window 0 and the window containing the topbar pane are always preserved.
 func CleanOrphanWindows() {
 	sessions, err := session.List()
 	if err != nil {
@@ -227,8 +227,10 @@ func CleanOrphanWindows() {
 		}
 	}
 
+	topbarWindow := baytmux.TopbarWindowIndex()
+
 	for _, idx := range baytmux.ListWindowIndices() {
-		if idx == 0 || owned[idx] {
+		if idx == 0 || idx == topbarWindow || owned[idx] {
 			continue
 		}
 		baytmux.KillWindow(idx)
