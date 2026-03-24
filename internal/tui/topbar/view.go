@@ -57,17 +57,21 @@ func (m Model) View() string {
 		repoTabs = append(repoTabs, styles.RepoTab.Render(plusLabel))
 	}
 
-	row1 := styles.Title.Render("bay") + "   " + strings.Join(repoTabs, " \u2502 ")
+	titleLabel := "bay focus"
+	if m.focused {
+		titleLabel = "bay view"
+	}
+	row1 := styles.Title.Render(titleLabel) + "   " + strings.Join(repoTabs, " \u2502 ")
 
 	if m.mode == modeSettings {
-		row1 = styles.Title.Render("bay") + "   " + styles.RepoTabActive.Render("⚙ Settings")
+		row1 = styles.Title.Render(titleLabel) + "   " + styles.RepoTabActive.Render("⚙ Settings")
 	}
 	if m.mode == modeCreate {
 		createLabel := "creating new session..."
 		if m.createPreselected != "" {
 			createLabel = fmt.Sprintf("creating session for %s...", m.createPreselected)
 		}
-		row1 = styles.Title.Render("bay") + "   " + strings.Join(repoTabs, " \u2502 ")
+		row1 = styles.Title.Render(titleLabel) + "   " + strings.Join(repoTabs, " \u2502 ")
 		// Row 2 and 3 handled below
 		_ = createLabel
 	}
@@ -262,7 +266,14 @@ func (m Model) renderDiffRow() string {
 	filePart := styles.NoteText.Render(fmt.Sprintf("±%d files", cached.Files))
 	insPart := styles.SuccessText.Render(fmt.Sprintf("+%d", cached.Insertions))
 	delPart := styles.ErrorText.Render(fmt.Sprintf("-%d", cached.Deletions))
-	return pad + filePart + "  " + insPart + " " + delPart
+	row := pad + filePart + "  " + insPart + " " + delPart
+	if cached.Untracked > 0 {
+		row += "  " + styles.HelpKey.Render(fmt.Sprintf("?%d untracked", cached.Untracked))
+	}
+	if cached.Deleted > 0 {
+		row += "  " + styles.ErrorText.Render(fmt.Sprintf("✗%d deleted", cached.Deleted))
+	}
+	return row
 }
 
 func (m Model) renderNoteRow() string {
@@ -301,7 +312,6 @@ func (m Model) renderNoteRow() string {
 			styles.NoteText.Render("`+space") + " " + styles.HelpBar.Render("focus") + "  " +
 			styles.NoteText.Render("`+tab") + " " + styles.HelpBar.Render("cycle") + "  " +
 			styles.NoteText.Render("`+1-9") + " " + styles.HelpBar.Render("jump") + "  " +
-			styles.NoteText.Render("`+r") + " " + styles.HelpBar.Render("repo") + "  " +
 			styles.NoteText.Render("`+a") + " " + styles.HelpBar.Render("agent") + "  " +
 			styles.NoteText.Render("`+d/D") + " " + styles.HelpBar.Render("split") + "  " +
 			styles.NoteText.Render("`+w") + " " + styles.HelpBar.Render("close") + "  " +
@@ -381,7 +391,6 @@ func (m Model) renderHintBarPlain() string {
 	return tmuxHint("`+space", "focus") + gap +
 		tmuxHint("`+tab", "cycle") + gap +
 		tmuxHint("`+1-9", "jump") + gap +
-		tmuxHint("`+r", "repo") + gap +
 		tmuxHint("`+a", "agent") + gap +
 		tmuxHint("`+d/D", "split") + gap +
 		tmuxHint("`+w", "close") + gap +
@@ -391,7 +400,7 @@ func (m Model) renderHintBarPlain() string {
 
 // tmuxHint formats a key+description pair with tmux color codes.
 func tmuxHint(key, desc string) string {
-	return "#[fg=#F97316,bold]" + key + " #[fg=#9CA3AF,nobold]" + desc
+	return "#[fg=#FBBF24,bold]" + key + " #[fg=#9CA3AF,nobold]" + desc
 }
 
 func truncate(s string, maxLen int) string {

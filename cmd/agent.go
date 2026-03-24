@@ -75,16 +75,39 @@ func Agent(args []string) error {
 		}
 	}
 
-	// Save the agent session ID to the session YAML
+	// Save the agent session ID to the session YAML.
+	// Three strategies: exact PaneID match, first agent pane with empty AgentSessionID, append new.
 	paneID := os.Getenv("TMUX_PANE")
 	if paneID != "" {
 		s, err := session.FindActiveSession()
 		if err == nil {
+			matched := false
+			// Strategy 1: exact PaneID match
 			for i, p := range s.Panes {
 				if p.PaneID == paneID {
 					s.Panes[i].AgentSessionID = uuid
+					matched = true
 					break
 				}
+			}
+			// Strategy 2: first agent pane with empty AgentSessionID (fresh session / cold boot)
+			if !matched {
+				for i, p := range s.Panes {
+					if p.Type == "agent" && p.AgentSessionID == "" {
+						s.Panes[i].AgentSessionID = uuid
+						s.Panes[i].PaneID = paneID
+						matched = true
+						break
+					}
+				}
+			}
+			// Strategy 3: append a new pane entry
+			if !matched {
+				s.Panes = append(s.Panes, session.Pane{
+					Type:           "agent",
+					PaneID:         paneID,
+					AgentSessionID: uuid,
+				})
 			}
 			session.Save(s)
 		}

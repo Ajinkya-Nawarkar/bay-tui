@@ -171,13 +171,13 @@ Infrastructure:
 
 Top bar (` + "`" + ` prefix):
   ` + "`" + `+Tab   Cycle session    ` + "`" + `+1-9   Jump to session
-  ` + "`" + `+r     Cycle repo       ` + "`" + `+space  Toggle focus mode
+  ` + "`" + `+space  Enter bay view mode
 
-Focused mode (` + "`" + `+space to enter, esc to leave):
+Bay view mode (` + "`" + `+space to enter, esc to leave):
   h/l     Switch repo      n/d/R   New/delete/rename session
   N       Edit session note
   m       Memory viewer    Enter   Activate session
-  q       Quit bay         esc     Leave focus mode
+  q       Quit bay         esc     Leave bay view
 
 Pane management (` + "`" + ` then):
   Arrow           Navigate panes

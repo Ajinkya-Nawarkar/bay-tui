@@ -90,6 +90,8 @@ verify_checksum() {
     fi
 }
 
+RC_FILE=""
+
 setup_path() {
     # Already in PATH — nothing to do
     case ":${PATH}:" in
@@ -99,7 +101,6 @@ setup_path() {
     PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
 
     # Find the right shell rc file
-    RC_FILE=""
     if [ -f "$HOME/.zshrc" ]; then
         RC_FILE="$HOME/.zshrc"
     elif [ -f "$HOME/.bashrc" ]; then
@@ -171,10 +172,19 @@ main() {
     echo ""
     info "bay ${version} installed successfully!"
     echo ""
-    info "Open a new terminal and run:"
-    echo ""
-    echo "  bay"
-    echo ""
+
+    # If bay is not in current PATH, show explicit source command
+    if ! command -v bay >/dev/null 2>&1 && [ -n "$RC_FILE" ]; then
+        info "To start bay now, run:"
+        echo ""
+        echo "  source ${RC_FILE} && bay"
+        echo ""
+    else
+        info "Run:"
+        echo ""
+        echo "  bay"
+        echo ""
+    fi
 }
 
 main

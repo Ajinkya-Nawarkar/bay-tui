@@ -61,7 +61,7 @@ const (
 const (
 	// AgentActivityThreshold is how recently (in seconds) a pane must have
 	// had activity to be considered "active" vs "idle".
-	AgentActivityThreshold = int64(3)
+	AgentActivityThreshold = int64(5)
 
 	// DiffCacheTTL is how long a cached git diff summary is valid.
 	DiffCacheTTL = 10 * time.Second

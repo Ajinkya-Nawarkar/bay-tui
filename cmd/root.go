@@ -69,6 +69,9 @@ func Root(fresh bool) error {
 		return fmt.Errorf("creating bay session: %w", err)
 	}
 
+	// Register the resolved bay binary path so tmux bindings use the full path.
+	baytmux.SetBayBin(bayBin)
+
 	// Set up tmux keybindings with configured agent command
 	agentCmd := constants.DefaultAgent
 	if cfg, err := config.Load(); err == nil && cfg.Defaults.Agent != "" {

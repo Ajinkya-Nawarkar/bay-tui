@@ -34,19 +34,19 @@ func TestTopbarStartsUnfocused(t *testing.T) {
 	}
 }
 
-func TestTopbarSpaceTogglesFocus(t *testing.T) {
+func TestTopbarSpaceEntersFocus(t *testing.T) {
 	m := newTestTopbar()
 
 	// space should focus
 	m = sendKey(m, " ")
 	if !m.IsFocused() {
-		t.Error("space should toggle focus on")
+		t.Error("space should enter focus mode")
 	}
 
-	// space again should unfocus
+	// space again should NOT unfocus (one-way)
 	m = sendKey(m, " ")
-	if m.IsFocused() {
-		t.Error("space should toggle focus off")
+	if !m.IsFocused() {
+		t.Error("space should not exit focus mode (esc exits)")
 	}
 }
 
@@ -113,9 +113,9 @@ func TestTopbarFocusResetsRowToRepos(t *testing.T) {
 		t.Error("focus should start on repo row")
 	}
 
-	// Unfocus and refocus — should reset to row 0
-	m = sendKey(m, " ") // unfocus
-	m = sendKey(m, " ") // refocus
+	// Unfocus via esc and refocus via space — should reset to row 0
+	m = sendSpecialKey(m, tea.KeyEscape) // unfocus
+	m = sendKey(m, " ")                  // refocus
 	if m.FocusRow() != 0 {
 		t.Error("refocusing should reset to repo row")
 	}

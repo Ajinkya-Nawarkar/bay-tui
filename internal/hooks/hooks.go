@@ -164,15 +164,20 @@ func SyncPaneLayout(sessionName string, windowIdx int) {
 		return
 	}
 
-	// Build a lookup of existing claude session IDs by tmux pane ID
+	// Build lookups of existing claude session IDs by tmux pane ID and by position.
 	existingIDs := make(map[string]string)
-	for _, p := range s.Panes {
-		if p.PaneID != "" && p.AgentSessionID != "" {
-			existingIDs[p.PaneID] = p.AgentSessionID
+	existingIDsByIdx := make(map[int]string) // positional fallback
+	for i, p := range s.Panes {
+		if p.AgentSessionID != "" {
+			if p.PaneID != "" {
+				existingIDs[p.PaneID] = p.AgentSessionID
+			}
+			existingIDsByIdx[i] = p.AgentSessionID
 		}
 	}
 
 	var sessionPanes []session.Pane
+	agentIdx := 0 // tracks position among agent panes for positional fallback
 	for _, p := range panes {
 		paneType := "shell"
 		if p.IsAgent {
@@ -190,6 +195,14 @@ func SyncPaneLayout(sessionName string, windowIdx int) {
 		// Preserve claude session ID from existing YAML data
 		if id, ok := existingIDs[p.PaneID]; ok {
 			sp.AgentSessionID = id
+		} else if p.IsAgent {
+			// Positional fallback: match by index among agent panes
+			if id, ok := existingIDsByIdx[agentIdx]; ok {
+				sp.AgentSessionID = id
+			}
+		}
+		if p.IsAgent {
+			agentIdx++
 		}
 
 		sessionPanes = append(sessionPanes, sp)

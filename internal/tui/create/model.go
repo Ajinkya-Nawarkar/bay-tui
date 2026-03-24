@@ -78,7 +78,15 @@ func NewWithSessionInfo(repos []scanner.Repo, reposWithSessions map[string]bool,
 			if r.Name == preselectedRepo {
 				m.repoCursor = i
 				m.selectedRepo = r
-				m.step = stepWorktreeChoice // skip repo picker
+				if r.Name == "~" {
+					// ~ is not a git repo — skip worktree choice, go to name
+					m.useWorktree = false
+					m.nameInput.SetValue("home")
+					m.nameInput.Focus()
+					m.step = stepSessionName
+				} else {
+					m.step = stepWorktreeChoice // skip repo picker
+				}
 				break
 			}
 		}
@@ -132,6 +140,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if len(m.repos) > 0 {
 					m.selectedRepo = m.repos[m.repoCursor]
+					if m.selectedRepo.Name == "~" {
+						// ~ is not a git repo — skip worktree choice
+						m.useWorktree = false
+						m.nameInput.SetValue("home")
+						m.nameInput.Focus()
+						m.step = stepSessionName
+						return m, textinput.Blink
+					}
 					m.step = stepWorktreeChoice
 				}
 			}

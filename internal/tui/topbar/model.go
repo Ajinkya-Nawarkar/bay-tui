@@ -44,6 +44,8 @@ type diffSummary struct {
 	Files      int
 	Insertions int
 	Deletions  int
+	Untracked  int
+	Deleted    int
 	Clean      bool
 	ComputedAt time.Time
 }
@@ -189,9 +191,12 @@ func (m *Model) refresh() {
 		prevRepoName = m.repos[m.activeRepoIdx].Name
 	}
 
-	m.repos = filtered
+	// Prepend ~ virtual repo (always visible, pinned first)
+	homeDir, _ := os.UserHomeDir()
+	tildeRepo := scanner.Repo{Name: "~", Path: homeDir}
+	m.repos = append([]scanner.Repo{tildeRepo}, filtered...)
 
-	// Try to keep the same repo selected
+	// Try to keep the same repo selected (offset by 1 for prepended ~)
 	m.activeRepoIdx = 0
 	m.plusSelected = false
 	if prevRepoName != "" {
@@ -461,14 +466,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Clear any lingering status on new keypress
 		m.statusMsg = ""
 
-		// Space toggles focus — sent by `+Space prefix binding
+		// Space enters focus — sent by `+Space prefix binding.
+		// One-way: space only enters focus mode; esc exits it.
 		if key == " " {
-			m.focused = !m.focused
-			m.statusMsg = ""
-			if !m.focused {
-				m.focusRow = 0
-				return m, unfocusCmd
+			if m.focused {
+				return m, nil // already focused — no-op
 			}
+			m.focused = true
+			m.statusMsg = ""
 			// Default to sessions row with the active session selected
 			sessions := m.activeRepoSessions()
 			if len(sessions) > 0 {
@@ -485,14 +490,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// These work without focus mode (sent via `+Tab / `+r / `+0-9 prefix bindings).
+		// These work without focus mode (sent via `+Tab / `+0-9 prefix bindings).
 		// In focus mode, these keys are not used — navigation uses arrow keys instead.
 		if !m.focused {
 			switch {
 			case key == "tab":
 				return m.cycleSession()
-			case key == "r":
-				return m.cycleRepo(1)
 			case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
 				return m.jumpToSession(int(key[0] - '1'))
 			}
@@ -792,6 +795,12 @@ func (m *Model) switchToSession(s *session.Session) error {
 	if err := baytmux.SwitchToWindow(windowIdx); err != nil {
 		return fmt.Errorf("switching window: %w", err)
 	}
+
+	// Verify the switch landed on the expected window.
+	if actual, err := baytmux.CurrentWindowIndex(); err == nil && actual != windowIdx {
+		logging.Warn("switchToSession %q: expected window %d but got %d, retrying", s.Name, windowIdx, actual)
+		baytmux.SwitchToWindow(windowIdx)
+	}
 	logging.Info("switchToSession %q: switch complete", s.Name)
 
 	baytmux.FocusTopbarPane()
@@ -802,8 +811,9 @@ func (m *Model) switchToSession(s *session.Session) error {
 	// Activate new session (update working state, log event)
 	hooks.OnSessionActivate(s.Name, s.Repo, s.WorkingDir)
 
-	// Clean up orphan tmux windows that don't belong to any session
-	hooks.CleanOrphanWindows()
+	// Clean up orphan tmux windows that don't belong to any session.
+	// Run async so it doesn't interfere with the just-activated window.
+	go hooks.CleanOrphanWindows()
 
 	return nil
 }
@@ -1416,7 +1426,7 @@ func (m *Model) repoAgentStatus(repoName string) string {
 	return ""
 }
 
-// fetchDiffCmd runs git diff --shortstat asynchronously and returns a diffResultMsg.
+// fetchDiffCmd runs git diff --shortstat and git status --porcelain asynchronously.
 func fetchDiffCmd(sessionName, workDir string) tea.Cmd {
 	return func() tea.Msg {
 		// Unstaged changes
@@ -1431,13 +1441,31 @@ func fetchDiffCmd(sessionName, workDir string) tea.Cmd {
 		ins := i1 + i2
 		del := d1 + d2
 
+		// Count untracked and deleted files from git status
+		var untracked, deleted int
+		out3, _ := exec.Command("git", "-C", workDir, "status", "--porcelain").Output()
+		for _, line := range strings.Split(string(out3), "\n") {
+			if len(line) < 2 {
+				continue
+			}
+			prefix := line[:2]
+			switch {
+			case prefix == "??":
+				untracked++
+			case prefix[0] == 'D' || prefix[1] == 'D':
+				deleted++
+			}
+		}
+
 		return diffResultMsg{
 			SessionName: sessionName,
 			Summary: diffSummary{
 				Files:      files,
 				Insertions: ins,
 				Deletions:  del,
-				Clean:      files == 0 && ins == 0 && del == 0,
+				Untracked:  untracked,
+				Deleted:    deleted,
+				Clean:      files == 0 && ins == 0 && del == 0 && untracked == 0 && deleted == 0,
 				ComputedAt: time.Now(),
 			},
 		}

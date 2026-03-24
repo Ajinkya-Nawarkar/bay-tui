@@ -33,6 +33,23 @@ const (
 // This stays constant across join-pane / break-pane moves.
 var topbarPaneID string
 
+// bayBinPath holds the resolved absolute path to the bay binary.
+// Set once at startup via SetBayBin; used in tmux bindings and agent commands.
+var bayBinPath string
+
+// SetBayBin stores the resolved bay binary path for use in tmux commands.
+func SetBayBin(path string) {
+	bayBinPath = path
+}
+
+// bayBin returns the resolved bay binary path, falling back to "bay".
+func bayBin() string {
+	if bayBinPath != "" {
+		return bayBinPath
+	}
+	return "bay"
+}
+
 // topbarPaneFile returns the path where the topbar pane ID is persisted.
 func topbarPaneFile() string {
 	home, _ := os.UserHomeDir()
@@ -386,14 +403,14 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 
 	// Pane border status
 	run("set-option", "-g", "pane-border-status", "top")
-	run("set-option", "-g", "pane-border-format", " #{?#{==:#{pane_index},0},bay,#{?#{pane_title},#{pane_title},#(basename #{pane_current_path})}} ")
-	run("set-option", "-g", "pane-active-border-style", "fg=#F9FAFB,bold")
+	run("set-option", "-g", "pane-border-format", " #{?#{==:#{pane_index},0},bay view,#{?#{pane_title},#{pane_title},#(basename #{pane_current_path})}} ")
+	run("set-option", "-g", "pane-active-border-style", "fg=#10B981,bold")
 	run("set-option", "-g", "pane-border-style", "fg=#4B5563")
 
 	// Status bar styling
-	run("set-option", "-g", "status-style", "bg=#1F2937,fg=#9CA3AF")
-	run("set-option", "-g", "status-left", " #{?client_prefix,⌘ CMD, bay} ")
-	run("set-option", "-g", "status-left-style", "#{?client_prefix,bg=#7C3AED fg=#F9FAFB bold,bg=#374151 fg=#06B6D4 bold}")
+	run("set-option", "-g", "status-style", "bg=#1F2937,fg=#D1D5DB")
+	run("set-option", "-g", "status-left", " #{?client_prefix,⌘ CMD, bay focus} ")
+	run("set-option", "-g", "status-left-style", "#{?client_prefix,bg=#7C3AED fg=#F9FAFB bold,bg=#374151 fg=#FBBF24 bold}")
 	run("set-option", "-g", "status-right", "#(cat ~/.bay/.topbar-hints)")
 	run("set-option", "-g", "status-right-length", "120")
 	run("set-option", "-g", "status-interval", "1")
@@ -411,12 +428,12 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	// Hooks: re-lock topbar height on layout-changing events.
 	// after-split-window and after-kill-pane also sync pane layout to session YAML
 	// so that pane state is persisted immediately, not just on session deactivation.
-	syncPanes := "bay internal sync-panes &"
+	syncPanes := bayBin() + " internal sync-panes &"
 	for _, hook := range []string{"after-select-window", "client-session-changed"} {
 		run("set-hook", "-g", hook,
 			fmt.Sprintf("run-shell '%s'", resizeTopbar))
 	}
-	ensurePane := "bay internal ensure-pane &"
+	ensurePane := bayBin() + " internal ensure-pane &"
 	run("set-hook", "-g", "after-kill-pane",
 		fmt.Sprintf("run-shell '%s; %s'", resizeTopbar, ensurePane))
 	// Clear title on new panes so they fall back to directory basename in the border.
@@ -430,6 +447,7 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	run("unbind-key", "n") // next-window
 	run("unbind-key", "p") // previous-window
 	run("unbind-key", "l") // last-window
+	run("unbind-key", "s") // session-chooser — bay manages sessions via topbar
 	for i := 1; i <= 9; i++ {
 		// Already rebound on prefix2 (backtick) to send-keys to topbar.
 		// Unbind on primary prefix (Ctrl+B) to prevent bypass.
@@ -458,7 +476,7 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	// Auto-labels the pane with the agent command so the border shows it.
 	run("bind-key", "-r", "a", "if-shell",
 		fmt.Sprintf("[ \"#{pane_id}\" != \"$(cat %s)\" ]", topbarIDFile),
-		fmt.Sprintf("run-shell 'tmux split-window -h -c \"#{pane_current_path}\" '\"'\"'bash -c \"bay agent\"'\"'\"' && tmux select-pane -T %s && %s'", agentCmd, resizeTopbar))
+		fmt.Sprintf("run-shell 'tmux split-window -h -c \"#{pane_current_path}\" '\"'\"'bash -c \"%s agent\"'\"'\"' && tmux select-pane -T %s && %s'", bayBin(), agentCmd, resizeTopbar))
 
 	// w to close pane — guard against topbar AND last dev pane.
 	// Count panes in the window, subtract 1 for topbar — only allow kill if >1 dev panes remain.
@@ -474,9 +492,6 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 
 	// `+Tab → cycle session (repeatable: `+Tab+Tab+Tab...)
 	run("bind-key", "-r", "Tab", "send-keys", "-t", ".0", "Tab")
-
-	// `+r → cycle repo (repeatable)
-	run("bind-key", "-r", "r", "send-keys", "-t", ".0", "r")
 
 	// `+1-9 → jump to session by index (1-indexed, max 9 sessions)
 	for i := 1; i <= 9; i++ {
@@ -497,7 +512,7 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	// Memory hooks: capture pane buffer on pane exit for episodic recording.
 	// Also ensure a dev pane exists so the session doesn't get stuck with only the topbar.
 	run("set-hook", "-g", "pane-exited",
-		"run-shell 'bay internal capture #{pane_id} &; bay internal ensure-pane &'")
+		fmt.Sprintf("run-shell '%s internal capture #{pane_id} &; %s internal ensure-pane &'", bayBin(), bayBin()))
 
 	return nil
 }
@@ -507,7 +522,7 @@ func afterSplitHookCmd() string {
 	topbarIDFile := "$HOME/.bay/.topbar-pane-id"
 	resizeTopbar := fmt.Sprintf("tmux resize-pane -t $(cat %s) -y %s 2>/dev/null || true", topbarIDFile, TopbarHeight)
 	return fmt.Sprintf("run-shell '%s; %s; %s'",
-		"tmux select-pane -T ''", resizeTopbar, "bay internal sync-panes &")
+		"tmux select-pane -T ''", resizeTopbar, bayBin()+" internal sync-panes &")
 }
 
 // restoreAfterSplitHook re-sets the after-split-window hook after it was
@@ -578,7 +593,11 @@ func CaptureAllDevPanes(windowIndex, lines int) (map[string]string, error) {
 		if paneID == topbarID {
 			continue
 		}
-		if strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude") {
+		isAgentPane := strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude")
+		if !isAgentPane && bayBinPath != "" {
+			isAgentPane = strings.Contains(startCmd, bayBinPath+" agent")
+		}
+		if isAgentPane {
 			continue
 		}
 
@@ -641,6 +660,9 @@ func SnapshotAllPanes() map[int][]PaneInfo {
 		}
 
 		isAgent := strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude")
+		if !isAgent && bayBinPath != "" {
+			isAgent = strings.Contains(startCmd, bayBinPath+" agent")
+		}
 		activity, _ := strconv.ParseInt(activityStr, 10, 64)
 
 		result[winIdx] = append(result[winIdx], PaneInfo{
@@ -691,6 +713,9 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 
 		// Detect agent panes by checking if the start command contains "bay agent" or "claude"
 		isAgent := strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude")
+		if !isAgent && bayBinPath != "" {
+			isAgent = strings.Contains(startCmd, bayBinPath+" agent")
+		}
 		panes = append(panes, PaneInfo{
 			PaneID:  paneID,
 			Command: startCmd,
@@ -796,10 +821,11 @@ type SessionPane struct {
 // agentLaunchCmd returns the shell command to launch an agent pane.
 // If a Claude session ID exists, resumes it; otherwise starts fresh.
 func agentLaunchCmd(agentSessionID string) string {
+	bin := bayBin()
 	if agentSessionID != "" {
-		return fmt.Sprintf("bay agent --resume %s", agentSessionID)
+		return fmt.Sprintf("%s agent --resume %s", bin, agentSessionID)
 	}
-	return "bay agent"
+	return bin + " agent"
 }
 
 // hintsFile returns the path where topbar hints are written for tmux status bar.
@@ -849,6 +875,19 @@ func EnsureDevPane(windowIndex int, dir string) error {
 // ListBaySessions is kept for compatibility.
 func ListBaySessions() ([]string, error) {
 	return nil, nil
+}
+
+// CurrentWindowIndex returns the window index the tmux client is currently viewing.
+func CurrentWindowIndex() (int, error) {
+	out, err := run("display-message", "-p", "#{window_index}")
+	if err != nil {
+		return -1, fmt.Errorf("display-message: %w", err)
+	}
+	idx, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return -1, fmt.Errorf("parsing window index: %w", err)
+	}
+	return idx, nil
 }
 
 // CurrentSession returns the name of the active tmux session.

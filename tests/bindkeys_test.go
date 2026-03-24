@@ -106,8 +106,8 @@ func TestBindKeysStatusLeftStyleCMDOverlay(t *testing.T) {
 			if !strings.Contains(val, "#7C3AED") {
 				t.Error("status-left-style should contain purple (#7C3AED) for prefix active state")
 			}
-			if !strings.Contains(val, "#06B6D4") {
-				t.Error("status-left-style should contain cyan (#06B6D4) for normal state")
+			if !strings.Contains(val, "#FBBF24") {
+				t.Error("status-left-style should contain warm yellow (#FBBF24) for normal state")
 			}
 			return
 		}
@@ -168,15 +168,6 @@ func TestBindKeysQuickAccessUsesDynamicTarget(t *testing.T) {
 	}
 	if !argsContain(tab.args, ".0") {
 		t.Error("`+Tab binding should target .0")
-	}
-
-	// `+r should use .0
-	r := findBindKey(cmds, "r")
-	if r == nil {
-		t.Fatal("no bind-key for 'r' found")
-	}
-	if !argsContain(r.args, ".0") {
-		t.Error("`+r binding should target .0")
 	}
 
 	// `+1 through `+9 should use .0
