@@ -102,6 +102,12 @@ func run() (exitCode int) {
 			return 1
 		}
 
+	case "beta":
+		if err := cmd.Beta(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
+		}
+
 	case "uninstall":
 		if err := cmd.Uninstall(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -165,6 +171,7 @@ Infrastructure:
   bay keybinds     Show keybind reference and terminal setup tips
   bay build        Rebuild bay from latest source
   bay upgrade      Download and install latest release
+  bay beta         Install latest beta (pre-release) version
   bay uninstall    Remove all bay data and Claude hooks
   bay version      Show version
   bay help         Show this help

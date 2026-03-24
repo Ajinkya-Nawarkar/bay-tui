@@ -1,9 +1,7 @@
-name: Release
+name: Beta Release
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -18,31 +16,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get latest tag
+      - name: Get latest stable tag
         id: latest
         run: |
           tag=$(git tag -l 'v*' --sort=-v:refname | grep -v '-' | head -1)
           if [ -z "$tag" ]; then tag="v0.0.0"; fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Bump version
+      - name: Generate beta version
         id: bump
         run: |
           current="${{ steps.latest.outputs.tag }}"
           major=$(echo "$current" | sed 's/v//' | cut -d. -f1)
           minor=$(echo "$current" | sed 's/v//' | cut -d. -f2)
-          patch=$(echo "$current" | sed 's/v//' | cut -d. -f3)
-
-          # feat: = minor bump, everything else = patch bump
-          msg=$(git log -1 --pretty=%s)
-          if echo "$msg" | grep -q "^feat"; then
-            minor=$((minor + 1))
-            patch=0
-          else
-            patch=$((patch + 1))
-          fi
-
-          new="v${major}.${minor}.${patch}"
+          minor=$((minor + 1))
+          new="v${major}.${minor}.0-beta.${{ github.run_number }}"
           echo "version=$new" >> "$GITHUB_OUTPUT"
 
       - name: Create tag
@@ -100,10 +88,11 @@ jobs:
           cd artifacts
           sha256sum bay-*.tar.gz > checksums.txt
 
-      - name: Create release
+      - name: Create pre-release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.tag.outputs.version }}
+          prerelease: true
           generate_release_notes: true
           files: |
             artifacts/bay-*.tar.gz
