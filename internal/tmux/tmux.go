@@ -872,6 +872,16 @@ func EnsureDevPane(windowIndex int, dir string) error {
 	return nil
 }
 
+// RestartTopbar restarts the topbar pane using respawn-pane.
+// This cleanly replaces the TUI process while keeping the pane alive,
+// triggering the bash restart loop to launch a fresh TUI.
+func RestartTopbar(topbarCmd string) error {
+	target := TopbarPaneTarget()
+	wrapped := wrapTopbarCmd(topbarCmd)
+	_, err := run("respawn-pane", "-k", "-t", target, "bash", "-c", wrapped)
+	return err
+}
+
 // ListBaySessions is kept for compatibility.
 func ListBaySessions() ([]string, error) {
 	return nil, nil

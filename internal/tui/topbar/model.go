@@ -427,10 +427,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.BlurMsg:
-		if m.focused {
-			m.focused = false
-			m.focusRow = 0
-		}
+		// No-op: bay view should only exit via esc, not on pane click/blur.
 		return m, nil
 
 	case tea.KeyMsg:
@@ -554,9 +551,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.activateCurrentSession()
 		case "n":
-			if m.focusRow == 0 {
-				// From repo row: full repo picker
+			if m.focusRow == 0 && m.plusSelected {
+				// From ＋ button: full repo picker
 				return m.startCreate("")
+			}
+			if m.focusRow == 0 {
+				// From repo row: pre-select current repo
+				if len(m.activeRepoSessions()) >= constants.MaxSessionsPerRepo {
+					m.statusMsg = fmt.Sprintf("Max %d sessions per repo", constants.MaxSessionsPerRepo)
+					return m, clearStatusAfter(constants.StatusClearDuration)
+				}
+				return m.startCreate(m.activeRepoName())
 			}
 			// From session row: pre-select current repo
 			if len(m.activeRepoSessions()) >= constants.MaxSessionsPerRepo {
@@ -816,6 +821,46 @@ func (m *Model) switchToSession(s *session.Session) error {
 	go hooks.CleanOrphanWindows()
 
 	return nil
+}
+
+// warmBootSession creates the tmux window and panes for a session without
+// moving the topbar or changing focus. This allows background sessions to have
+// live tmux windows so agent activity dots work.
+func warmBootSession(s *session.Session) {
+	// Skip stale sessions (missing directory)
+	if isSessionStale(s) {
+		return
+	}
+	// Skip sessions whose window already exists
+	if s.TmuxWindow != 0 && baytmux.WindowExists(s.TmuxWindow) {
+		return
+	}
+
+	idx, err := baytmux.CreateSessionWindow(s.WorkingDir)
+	if err != nil {
+		logging.Warn("warmBootSession %q: create window: %v", s.Name, err)
+		return
+	}
+	s.TmuxWindow = idx
+	logging.Info("warmBootSession %q: created window %d", s.Name, idx)
+
+	// Recreate panes if any were saved
+	if len(s.Panes) > 0 {
+		var tmuxPanes []baytmux.SessionPane
+		for _, p := range s.Panes {
+			tmuxPanes = append(tmuxPanes, baytmux.SessionPane{
+				Type:           p.Type,
+				Cwd:            p.Cwd,
+				Command:        p.Command,
+				Title:          p.Title,
+				AgentSessionID: p.AgentSessionID,
+			})
+		}
+		baytmux.RecreateSessionPanes(idx, tmuxPanes)
+		hooks.SyncPaneLayout(s.Name, idx)
+	}
+
+	session.Save(s)
 }
 
 func (m Model) startDelete() (tea.Model, tea.Cmd) {
@@ -1241,9 +1286,23 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // doAutoActivate performs the standard auto-activation logic (extracted for reuse).
+// First warm-boots ALL sessions so they have live tmux windows (enables agent dots),
+// then activates the last-active session normally.
 func (m Model) doAutoActivate() (tea.Model, tea.Cmd) {
+	// Warm boot all sessions so background ones have live tmux windows.
+	lastActive := session.LoadActiveSession()
+	for _, s := range m.sessions {
+		// Skip the session we're about to activate — it will get its window via activateSession.
+		if s.Name == lastActive {
+			continue
+		}
+		warmBootSession(s)
+	}
+	// Reload session data so TmuxWindow values are current in memory.
+	m.refresh()
+
 	// Restore last active session if available
-	if lastActive := session.LoadActiveSession(); lastActive != "" {
+	if lastActive != "" {
 		if s, err := session.Load(lastActive); err == nil {
 			for i, r := range m.repos {
 				if r.Name == s.Repo {

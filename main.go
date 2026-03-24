@@ -84,6 +84,12 @@ func run() (exitCode int) {
 			return 1
 		}
 
+	case "refresh":
+		if err := cmd.Refresh(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
+		}
+
 	case "keybinds":
 		if err := cmd.Keybinds(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -168,6 +174,7 @@ Search & Config:
 
 Infrastructure:
   bay setup        Run the setup wizard
+  bay refresh      Re-sync panes and restart topbar TUI
   bay keybinds     Show keybind reference and terminal setup tips
   bay build        Rebuild bay from latest source
   bay upgrade      Download and install latest release

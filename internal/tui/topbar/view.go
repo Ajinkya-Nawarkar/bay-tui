@@ -23,7 +23,10 @@ func (m Model) View() string {
 	var repoTabs []string
 	for i, repo := range m.repos {
 		count := m.sessionsForRepo(repo.Name)
-		label := fmt.Sprintf("%s (%d)", repo.Name, count)
+		label := repo.Name
+		if count > 1 {
+			label = fmt.Sprintf("%s (%d)", repo.Name, count)
+		}
 
 		// Agent activity dot for this repo
 		dot := ""
