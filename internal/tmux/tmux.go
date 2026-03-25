@@ -633,63 +633,6 @@ type PaneInfo struct {
 	Cwd       string
 	IsAgent   bool
 	Title     string
-	Activity  int64  // unix timestamp of last pane output (empty on tmux 3.6+)
-	CursorPos string // "Y,X" cursor position for activity detection fallback
-}
-
-// SnapshotAllPanes queries all panes across all windows in the bay session.
-// Returns a map of windowIndex → []PaneInfo (excluding the topbar pane).
-func SnapshotAllPanes() map[int][]PaneInfo {
-	sep := "%%BAY%%"
-	out, err := run("list-panes", "-s", "-t", MainSession,
-		"-F", fmt.Sprintf("#{window_index}%s#{pane_id}%s#{pane_start_command}%s#{pane_activity}%s#{cursor_y},#{cursor_x}", sep, sep, sep, sep))
-	if err != nil {
-		return nil
-	}
-
-	topbarID := TopbarPaneTarget()
-	result := make(map[int][]PaneInfo)
-
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		parts := strings.SplitN(line, sep, 5)
-		if len(parts) < 5 {
-			continue
-		}
-
-		winIdx, err := strconv.Atoi(parts[0])
-		if err != nil {
-			continue
-		}
-		paneID := parts[1]
-		startCmd := parts[2]
-		activityStr := parts[3]
-		cursorPos := parts[4]
-
-		if paneID == topbarID {
-			continue
-		}
-
-		isAgent := strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude")
-		if !isAgent && bayBinPath != "" {
-			isAgent = strings.Contains(startCmd, bayBinPath+" agent")
-		}
-		activity, _ := strconv.ParseInt(activityStr, 10, 64)
-
-		result[winIdx] = append(result[winIdx], PaneInfo{
-			PaneID:    paneID,
-			Command:   startCmd,
-			IsAgent:   isAgent,
-			Activity:  activity,
-			CursorPos: cursorPos,
-		})
-	}
-
-	return result
 }
 
 // SnapshotPaneLayout queries tmux for the current pane layout of a window.

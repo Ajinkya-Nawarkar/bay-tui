@@ -28,26 +28,15 @@ func (m Model) View() string {
 			label = fmt.Sprintf("%s (%d)", repo.Name, count)
 		}
 
-		// Agent activity dot for this repo
-		dot := ""
-		if status := m.repoAgentStatus(repo.Name); status != "" {
-			switch status {
-			case "active":
-				dot = styles.AgentActive.Render("●") + " "
-			case "idle":
-				dot = styles.AgentIdle.Render("●") + " "
-			}
-		}
-
 		if i == m.activeRepoIdx && !m.plusSelected {
 			if m.focused && m.focusRow == 0 {
 				label = constants.NavRight + label + constants.NavLeft // ▶name (N)◀
-				repoTabs = append(repoTabs, dot+styles.RepoTabFocused.Render(label))
+				repoTabs = append(repoTabs, styles.RepoTabFocused.Render(label))
 			} else {
-				repoTabs = append(repoTabs, dot+styles.RepoTabActive.Render(label))
+				repoTabs = append(repoTabs, styles.RepoTabActive.Render(label))
 			}
 		} else {
-			repoTabs = append(repoTabs, dot+styles.RepoTab.Render(label))
+			repoTabs = append(repoTabs, styles.RepoTab.Render(label))
 		}
 	}
 
@@ -213,26 +202,15 @@ func (m Model) renderSessionRow() string {
 			label = fmt.Sprintf("[%d:%s%s]", displayIdx, s.Name, staleMark)
 		}
 
-		// Prepend agent activity dot
-		dot := ""
-		if status, ok := m.agentStatus[s.Name]; ok {
-			switch status {
-			case "active":
-				dot = styles.AgentActive.Render("●") + " "
-			case "idle":
-				dot = styles.AgentIdle.Render("●") + " "
-			}
-		}
-
 		switch {
 		case isSelected:
-			tabs = append(tabs, dot+styles.SessionTabFocused.Render(label))
+			tabs = append(tabs, styles.SessionTabFocused.Render(label))
 		case stale:
-			tabs = append(tabs, dot+styles.SessionTabStale.Render(label))
+			tabs = append(tabs, styles.SessionTabStale.Render(label))
 		case isActive:
-			tabs = append(tabs, dot+styles.SessionTabActive.Render(label))
+			tabs = append(tabs, styles.SessionTabActive.Render(label))
 		default:
-			tabs = append(tabs, dot+styles.SessionTab.Render(label))
+			tabs = append(tabs, styles.SessionTab.Render(label))
 		}
 	}
 

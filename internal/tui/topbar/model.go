@@ -38,7 +38,7 @@ const (
 )
 
 type clearStatusMsg struct{}
-type agentTickMsg struct{}
+type diffTickMsg struct{}
 
 type diffSummary struct {
 	Files      int
@@ -104,11 +104,6 @@ type Model struct {
 	cleanupSessions []*session.Session
 	cleanupChecked  []bool
 	cleanupCursor   int
-
-	// Agent activity indicator: session name → "active" / "idle" / ""
-	agentStatus map[string]string
-	// Previous pane cursor positions for activity detection (paneID → "Y,X")
-	prevCursors map[string]string
 
 	// Diff summary cache: session name → diff summary
 	diffCache map[string]*diffSummary
@@ -292,7 +287,7 @@ func (m *Model) activeRepoName() string {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg { return autoActivateMsg{} },
-		tea.Tick(constants.AgentTickInterval, func(time.Time) tea.Msg { return agentTickMsg{} }),
+		tea.Tick(constants.DiffTickInterval, func(time.Time) tea.Msg { return diffTickMsg{} }),
 	)
 }
 
@@ -329,64 +324,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diffCache[msg.SessionName] = &msg.Summary
 		return m, nil
 
-	case agentTickMsg:
-		allPanes := baytmux.SnapshotAllPanes()
-		now := time.Now().Unix()
-		status := make(map[string]string)
-		newCursors := make(map[string]string)
-
-		for _, s := range m.sessions {
-			if s.TmuxWindow == 0 {
-				continue
-			}
-			panes, ok := allPanes[s.TmuxWindow]
-			if !ok {
-				continue
-			}
-			hasAgent := false
-			isActive := false
-			for _, p := range panes {
-				if !p.IsAgent {
-					continue
-				}
-				hasAgent = true
-				newCursors[p.PaneID] = p.CursorPos
-
-				// Primary: use pane_activity timestamp if available
-				if p.Activity > 0 {
-					if now-p.Activity <= constants.AgentActivityThreshold {
-						isActive = true
-					}
-				} else if p.CursorPos != "" {
-					// Fallback: compare cursor position with previous tick
-					if prev, ok := m.prevCursors[p.PaneID]; ok {
-						if p.CursorPos != prev {
-							isActive = true
-						}
-					}
-				}
-				if isActive {
-					break
-				}
-			}
-			if hasAgent {
-				if isActive {
-					status[s.Name] = "active"
-				} else {
-					status[s.Name] = "idle"
-				}
-			}
-		}
-
-		m.agentStatus = status
-		m.prevCursors = newCursors
-
+	case diffTickMsg:
 		// Refresh diff for the currently displayed session
-		cmds := []tea.Cmd{tea.Tick(constants.AgentTickInterval, func(time.Time) tea.Msg { return agentTickMsg{} })}
+		cmds := []tea.Cmd{tea.Tick(constants.DiffTickInterval, func(time.Time) tea.Msg { return diffTickMsg{} })}
 		if sessionName := m.selectedSessionName(); sessionName != "" {
 			cached := m.diffCache[sessionName]
 			if cached == nil || time.Since(cached.ComputedAt) > constants.DiffCacheTTL {
-				// Find the session's working dir
 				for _, s := range m.sessions {
 					if s.Name == sessionName {
 						workDir := s.WorkingDir
@@ -825,7 +768,7 @@ func (m *Model) switchToSession(s *session.Session) error {
 
 // warmBootSession creates the tmux window and panes for a session without
 // moving the topbar or changing focus. This allows background sessions to have
-// live tmux windows so agent activity dots work.
+// live tmux windows ready for instant switching.
 func warmBootSession(s *session.Session) {
 	// Skip stale sessions (missing directory)
 	if isSessionStale(s) {
@@ -1299,7 +1242,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // doAutoActivate performs the standard auto-activation logic (extracted for reuse).
-// First warm-boots ALL sessions so they have live tmux windows (enables agent dots),
+// First warm-boots ALL sessions so they have live tmux windows for instant switching,
 // then activates the last-active session normally.
 func (m Model) doAutoActivate() (tea.Model, tea.Cmd) {
 	// Detect fresh start: only the topbar window exists.
@@ -1492,27 +1435,6 @@ func (m Model) updateCleanup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m2, cmd
 	}
 	return m, nil
-}
-
-// repoAgentStatus returns the aggregate agent status for a repo.
-// "active" if any session has an active agent, "idle" if any has idle, "" otherwise.
-func (m *Model) repoAgentStatus(repoName string) string {
-	hasIdle := false
-	for _, s := range m.sessions {
-		if s.Repo != repoName {
-			continue
-		}
-		switch m.agentStatus[s.Name] {
-		case "active":
-			return "active"
-		case "idle":
-			hasIdle = true
-		}
-	}
-	if hasIdle {
-		return "idle"
-	}
-	return ""
 }
 
 // fetchDiffCmd runs git diff --shortstat and git status --porcelain asynchronously.

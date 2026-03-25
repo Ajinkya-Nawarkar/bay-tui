@@ -120,12 +120,6 @@ var (
 			Foreground(Dim). // dimmed — working dir missing
 			Strikethrough(true)
 
-	AgentActive = lipgloss.NewStyle().
-			Foreground(Success) // green — agent producing output
-
-	AgentIdle = lipgloss.NewStyle().
-			Foreground(Dim) // dim — agent waiting for input
-
 	// Layout
 	AppContainer = lipgloss.NewStyle().
 			Padding(0, 1)
