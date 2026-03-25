@@ -1302,6 +1302,20 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // First warm-boots ALL sessions so they have live tmux windows (enables agent dots),
 // then activates the last-active session normally.
 func (m Model) doAutoActivate() (tea.Model, tea.Cmd) {
+	// Detect fresh start: only the topbar window exists.
+	// Clear stale TmuxWindow values to prevent index collisions —
+	// indices from a previous bay run can match windows created
+	// by warm boot for different sessions.
+	if windows := baytmux.ListWindowIndices(); len(windows) <= 1 {
+		for _, s := range m.sessions {
+			if s.TmuxWindow != 0 {
+				s.TmuxWindow = 0
+				session.Save(s)
+			}
+		}
+		m.refresh()
+	}
+
 	// Warm boot all sessions so background ones have live tmux windows.
 	lastActive := session.LoadActiveSession()
 	for _, s := range m.sessions {
