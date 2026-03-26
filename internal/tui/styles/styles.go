@@ -120,6 +120,13 @@ var (
 			Foreground(Dim). // dimmed — working dir missing
 			Strikethrough(true)
 
+	HotRowItem = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	HotRowActive = lipgloss.NewStyle().
+			Foreground(Success).
+			Bold(true)
+
 	// Layout
 	AppContainer = lipgloss.NewStyle().
 			Padding(0, 1)

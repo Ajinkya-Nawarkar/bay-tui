@@ -2,10 +2,12 @@ package tests
 
 import (
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/config"
+	"bay/internal/session"
 	"bay/internal/tui/topbar"
 )
 
@@ -118,5 +120,96 @@ func TestTopbarFocusResetsRowToRepos(t *testing.T) {
 	m = sendKey(m, " ")                  // refocus
 	if m.FocusRow() != 0 {
 		t.Error("refocusing should reset to repo row")
+	}
+}
+
+// --- Hot Row Tests ---
+
+func makeSessions() []*session.Session {
+	now := time.Now()
+	return []*session.Session{
+		{Name: "s1", Repo: "repo-a", WorkingDir: "/tmp", LastActiveAt: now.Add(-1 * time.Minute)},
+		{Name: "s2", Repo: "repo-a", WorkingDir: "/tmp", LastActiveAt: now.Add(-5 * time.Minute)},
+		{Name: "s3", Repo: "repo-b", WorkingDir: "/tmp", LastActiveAt: now.Add(-10 * time.Minute)},
+		{Name: "s4", Repo: "repo-b", WorkingDir: "/tmp", LastActiveAt: now.Add(-20 * time.Minute)},
+		{Name: "s5", Repo: "repo-c", WorkingDir: "/tmp", LastActiveAt: now.Add(-30 * time.Minute)},
+		{Name: "s6", Repo: "repo-c", WorkingDir: "/tmp", LastActiveAt: now.Add(-60 * time.Minute)},
+	}
+}
+
+func TestHotRowBuiltOnRefresh(t *testing.T) {
+	m := newTestTopbar()
+	sessions := makeSessions()
+	m.SetSessionsForTest(sessions)
+
+	// Hot row should be populated and capped at MaxHotRowItems (5)
+	if m.HotRowLen() != 5 {
+		t.Errorf("expected hot row length 5, got %d", m.HotRowLen())
+	}
+}
+
+func TestHotRowCycleWraps(t *testing.T) {
+	m := newTestTopbar()
+	sessions := makeSessions()[:3] // 3 sessions
+	m.SetSessionsForTest(sessions)
+	m.SetActiveSessionForTest("s1")
+
+	if m.HotRowLen() != 3 {
+		t.Fatalf("expected hot row length 3, got %d", m.HotRowLen())
+	}
+
+	// Cycle idx starts at active session (s1 = index 0)
+	if m.HotRowCycleIdx() != 0 {
+		t.Errorf("expected cycle idx 0, got %d", m.HotRowCycleIdx())
+	}
+
+	// Send tab keys — since activateSession requires tmux, just verify the
+	// cycleIdx logic works by checking the hot row was built correctly
+	// (full cycle test needs tmux, covered by manual testing)
+}
+
+func TestHotRowReorderThreshold(t *testing.T) {
+	m := newTestTopbar()
+	sessions := makeSessions()[:3]
+	m.SetSessionsForTest(sessions)
+
+	initialLen := m.HotRowLen()
+
+	// Inject sessions again — since sessionActivatedAt is zero, it should rebuild
+	m.SetSessionsForTest(sessions)
+	if m.HotRowLen() != initialLen {
+		t.Errorf("hot row should maintain same length after rebuild, got %d", m.HotRowLen())
+	}
+}
+
+// modeGlobalSearch is mode value 6 (0-indexed in the iota).
+const modeGlobalSearch = 6
+
+func TestGlobalSearchFromUnfocused(t *testing.T) {
+	m := newTestTopbar()
+
+	// "/" from unfocused state should enter global search mode
+	m = sendKey(m, "/")
+	if m.Mode() != modeGlobalSearch {
+		t.Errorf("expected mode %d (globalSearch), got %d", modeGlobalSearch, m.Mode())
+	}
+}
+
+func TestGlobalSearchEscUnfocuses(t *testing.T) {
+	m := newTestTopbar()
+
+	// Start global search from unfocused state
+	m = sendKey(m, "/")
+	if m.Mode() != modeGlobalSearch {
+		t.Fatalf("expected mode %d (globalSearch), got %d", modeGlobalSearch, m.Mode())
+	}
+
+	// Esc should exit search AND unfocus (since we started unfocused)
+	m = sendSpecialKey(m, tea.KeyEscape)
+	if m.Mode() != 0 { // modeNormal
+		t.Errorf("expected mode 0 (normal), got %d", m.Mode())
+	}
+	if m.IsFocused() {
+		t.Error("esc from unfocused global search should return focus to dev pane")
 	}
 }

@@ -18,10 +18,10 @@ type keyMap struct {
 	Memory key.Binding
 	Delete key.Binding
 	Rename key.Binding
-	Note     key.Binding
-	Settings    key.Binding
-	QuickSwitch key.Binding
-	Help        key.Binding
+	Note         key.Binding
+	Settings     key.Binding
+	GlobalSearch key.Binding
+	Help         key.Binding
 	Quit        key.Binding
 	Escape      key.Binding
 }
@@ -83,9 +83,9 @@ var keys = keyMap{
 		key.WithKeys("S"),
 		key.WithHelp("S", "settings"),
 	),
-	QuickSwitch: key.NewBinding(
+	GlobalSearch: key.NewBinding(
 		key.WithKeys("/"),
-		key.WithHelp("/", "quick switch"),
+		key.WithHelp("/", "search all sessions"),
 	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),

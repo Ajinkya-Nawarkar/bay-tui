@@ -32,7 +32,7 @@ const (
 	modeEditNote
 	modeSettings
 	modeCreate
-	modeQuickSwitch
+	modeGlobalSearch
 	modeCleanup
 	modeHelp
 )
@@ -95,10 +95,15 @@ type Model struct {
 	width              int
 	height             int
 
-	// Quick-switch state
-	switchInput    textinput.Model
-	switchMatches  []*session.Session
-	switchSelected int
+	// Hot row state
+	hotRow             []*session.Session
+	hotRowCycleIdx     int
+	sessionActivatedAt time.Time
+
+	// Global search state
+	switchInput          textinput.Model
+	globalSearchMatches  []*session.Session
+	globalSearchSelected int
 
 	// Cleanup state
 	cleanupSessions []*session.Session
@@ -210,6 +215,8 @@ func (m *Model) refresh() {
 	if m.activeRepoIdx >= len(m.repos) && len(m.repos) > 0 {
 		m.activeRepoIdx = 0
 	}
+
+	m.maybeUpdateHotRow()
 }
 
 // repoLastActive returns the most recent LastActiveAt (or CreatedAt) among sessions for a repo.
@@ -391,8 +398,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeCreate {
 			return m.updateCreate(msg)
 		}
-		if m.mode == modeQuickSwitch {
-			return m.updateQuickSwitch(msg)
+		if m.mode == modeGlobalSearch {
+			return m.updateGlobalSearch(msg)
 		}
 		if m.mode == modeCleanup {
 			return m.updateCleanup(msg)
@@ -431,12 +438,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// These work without focus mode (sent via `+Tab / `+0-9 prefix bindings).
+		// These work without focus mode (sent via `+Tab / `+0-9 / `+/ prefix bindings).
 		// In focus mode, these keys are not used — navigation uses arrow keys instead.
 		if !m.focused {
 			switch {
 			case key == "tab":
-				return m.cycleSession()
+				return m.cycleHotRow()
+			case key == "/":
+				return m.startGlobalSearch()
 			case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
 				return m.jumpToSession(int(key[0] - '1'))
 			}
@@ -541,7 +550,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "S":
 			return m.startSettings()
 		case "/":
-			return m.startQuickSwitch()
+			return m.startGlobalSearch()
 		case "?":
 			m.mode = modeHelp
 			return m, nil
@@ -722,6 +731,8 @@ func (m Model) activateSession(s *session.Session) (tea.Model, tea.Cmd) {
 	if err := session.SaveActiveSession(s.Name); err != nil {
 		logging.Error("saving active session marker: %v", err)
 	}
+	m.maybeUpdateHotRow()
+	m.sessionActivatedAt = time.Now()
 	m.refresh()
 	windowIdx := m.activeWindowIdx
 	return m, func() tea.Msg {
@@ -1293,37 +1304,118 @@ func (m Model) doAutoActivate() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// --- Quick-Switch ---
+// --- Hot Row ---
 
-func (m Model) startQuickSwitch() (tea.Model, tea.Cmd) {
-	m.mode = modeQuickSwitch
+// buildHotRow sorts all non-stale sessions by LastActiveAt descending,
+// caps at MaxHotRowItems, and positions hotRowCycleIdx on the active session.
+func (m *Model) buildHotRow() {
+	var candidates []*session.Session
+	for _, s := range m.sessions {
+		if !isSessionStale(s) {
+			candidates = append(candidates, s)
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		ti := candidates[i].LastActiveAt
+		if ti.IsZero() {
+			ti = candidates[i].CreatedAt
+		}
+		tj := candidates[j].LastActiveAt
+		if tj.IsZero() {
+			tj = candidates[j].CreatedAt
+		}
+		return ti.After(tj)
+	})
+	if len(candidates) > constants.MaxHotRowItems {
+		candidates = candidates[:constants.MaxHotRowItems]
+	}
+	m.hotRow = candidates
+	m.hotRowCycleIdx = 0
+	for i, s := range m.hotRow {
+		if s.Name == m.activeSession {
+			m.hotRowCycleIdx = i
+			break
+		}
+	}
+}
+
+// maybeUpdateHotRow rebuilds the hot row only if enough time has passed
+// since the last session activation (to prevent rapid Tab cycling from reshuffling).
+func (m *Model) maybeUpdateHotRow() {
+	if m.sessionActivatedAt.IsZero() || time.Since(m.sessionActivatedAt) >= constants.HotRowReorderThreshold {
+		m.buildHotRow()
+	}
+}
+
+// cycleHotRow advances to the next item in the hot row and activates it.
+func (m Model) cycleHotRow() (tea.Model, tea.Cmd) {
+	if len(m.hotRow) == 0 {
+		return m.cycleSession()
+	}
+	m.hotRowCycleIdx = (m.hotRowCycleIdx + 1) % len(m.hotRow)
+	s := m.hotRow[m.hotRowCycleIdx]
+	// Switch repo tab to match
+	for i, r := range m.repos {
+		if r.Name == s.Repo {
+			m.activeRepoIdx = i
+			m.plusSelected = false
+			break
+		}
+	}
+	return m.activateSession(s)
+}
+
+// --- Global Search ---
+
+func (m Model) startGlobalSearch() (tea.Model, tea.Cmd) {
+	m.mode = modeGlobalSearch
 	m.switchInput.SetValue("")
 	m.switchInput.Focus()
-	m.filterSwitchMatches("")
+	m.filterGlobalSearchMatches("")
 	return m, textinput.Blink
 }
 
-func (m *Model) filterSwitchMatches(query string) {
+func (m *Model) filterGlobalSearchMatches(query string) {
 	query = strings.ToLower(query)
-	var matches []*session.Session
+	// Start with MRU-sorted sessions
+	var candidates []*session.Session
 	for _, s := range m.sessions {
-		if query == "" || strings.Contains(strings.ToLower(s.Name), query) || strings.Contains(strings.ToLower(s.Repo), query) {
+		candidates = append(candidates, s)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		ti := candidates[i].LastActiveAt
+		if ti.IsZero() {
+			ti = candidates[i].CreatedAt
+		}
+		tj := candidates[j].LastActiveAt
+		if tj.IsZero() {
+			tj = candidates[j].CreatedAt
+		}
+		return ti.After(tj)
+	})
+
+	var matches []*session.Session
+	for _, s := range candidates {
+		label := strings.ToLower(s.Repo + "/" + s.Name)
+		if query == "" || strings.Contains(label, query) {
 			matches = append(matches, s)
 		}
 	}
-	m.switchMatches = matches
-	m.switchSelected = 0
+	m.globalSearchMatches = matches
+	m.globalSearchSelected = 0
 }
 
-func (m Model) updateQuickSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateGlobalSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.mode = modeNormal
+		if !m.focused {
+			return m, unfocusCmd
+		}
 		return m, nil
 	case "enter":
-		if m.switchSelected < len(m.switchMatches) {
-			s := m.switchMatches[m.switchSelected]
-			// Switch to the correct repo tab
+		if m.globalSearchSelected < len(m.globalSearchMatches) {
+			s := m.globalSearchMatches[m.globalSearchSelected]
 			for i, r := range m.repos {
 				if r.Name == s.Repo {
 					m.activeRepoIdx = i
@@ -1335,20 +1427,20 @@ func (m Model) updateQuickSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.activateSession(s)
 		}
 		return m, nil
-	case "left":
-		if m.switchSelected > 0 {
-			m.switchSelected--
+	case "tab", "down":
+		if len(m.globalSearchMatches) > 0 {
+			m.globalSearchSelected = (m.globalSearchSelected + 1) % len(m.globalSearchMatches)
 		}
 		return m, nil
-	case "right":
-		if m.switchSelected < len(m.switchMatches)-1 {
-			m.switchSelected++
+	case "shift+tab", "up":
+		if len(m.globalSearchMatches) > 0 {
+			m.globalSearchSelected = (m.globalSearchSelected - 1 + len(m.globalSearchMatches)) % len(m.globalSearchMatches)
 		}
 		return m, nil
 	default:
 		var cmd tea.Cmd
 		m.switchInput, cmd = m.switchInput.Update(msg)
-		m.filterSwitchMatches(m.switchInput.Value())
+		m.filterGlobalSearchMatches(m.switchInput.Value())
 		return m, cmd
 	}
 }
@@ -1501,4 +1593,30 @@ func (m *Model) IsFocused() bool {
 // FocusRow returns the currently focused row (0 = repos, 1 = sessions).
 func (m *Model) FocusRow() int {
 	return m.focusRow
+}
+
+// HotRowLen returns the number of items in the hot row.
+func (m *Model) HotRowLen() int {
+	return len(m.hotRow)
+}
+
+// HotRowCycleIdx returns the current cycle index in the hot row.
+func (m *Model) HotRowCycleIdx() int {
+	return m.hotRowCycleIdx
+}
+
+// Mode returns the current mode (for testing).
+func (m *Model) Mode() int {
+	return int(m.mode)
+}
+
+// SetSessionsForTest injects sessions into the model (for testing without filesystem).
+func (m *Model) SetSessionsForTest(sessions []*session.Session) {
+	m.sessions = sessions
+	m.buildHotRow()
+}
+
+// SetActiveSessionForTest sets the active session name (for testing).
+func (m *Model) SetActiveSessionForTest(name string) {
+	m.activeSession = name
 }

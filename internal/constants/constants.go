@@ -77,10 +77,15 @@ const StaleDays = 30
 // --- TUI layout ---
 
 const (
-	MinTermWidth    = 20
+	MinTermWidth     = 20
 	DefaultTermWidth = 80
-	CleanupPageSize = 5
+	CleanupPageSize  = 5
+	MaxHotRowItems   = 5
 )
+
+// HotRowReorderThreshold is the minimum time a session must be active
+// before the hot row is reordered. Prevents rapid Tab cycling from reshuffling.
+const HotRowReorderThreshold = 10 * time.Second
 
 // --- Status message durations ---
 

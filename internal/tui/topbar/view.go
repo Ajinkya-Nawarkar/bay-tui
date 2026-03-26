@@ -67,10 +67,13 @@ func (m Model) View() string {
 	// Row 4: session note (or transient status message)
 	row4 := m.renderNoteRow()
 
+	// Row 0: hot row (MRU sessions across all repos)
+	row0 := m.renderHotRow()
+
 	// Write hints to file for tmux status bar
 	baytmux.WriteTopbarHints(m.renderHintBarPlain())
 
-	content := row1 + "\n" + row2 + "\n" + row3 + "\n" + row4
+	content := row0 + "\n" + row1 + "\n" + row2 + "\n" + row3 + "\n" + row4
 
 	// Choose border color based on focus state
 	var box lipgloss.Style
@@ -116,8 +119,8 @@ func (m Model) renderSessionRow() string {
 		}
 		return pad + styles.HelpBar.Render(label)
 	}
-	if m.mode == modeQuickSwitch {
-		return pad + "/ " + m.switchInput.View()
+	if m.mode == modeGlobalSearch {
+		return pad + "\U0001F50D " + m.switchInput.View()
 	}
 	if m.mode == modeHelp {
 		return pad +
@@ -212,8 +215,28 @@ func (m Model) renderDiffRow() string {
 
 	// Hide during modal modes
 	switch m.mode {
-	case modeRename, modeConfirmDelete, modeEditNote, modeSettings, modeCreate, modeQuickSwitch, modeHelp, modeCleanup:
+	case modeRename, modeConfirmDelete, modeEditNote, modeSettings, modeCreate, modeHelp, modeCleanup:
 		return pad
+	case modeGlobalSearch:
+		// Render match list in the diff row during global search
+		if len(m.globalSearchMatches) == 0 {
+			return pad
+		}
+		var items []string
+		limit := 5
+		if len(m.globalSearchMatches) < limit {
+			limit = len(m.globalSearchMatches)
+		}
+		for i := 0; i < limit; i++ {
+			s := m.globalSearchMatches[i]
+			label := s.Repo + "/" + s.Name + "  " + relativeTime(s.LastActiveAt)
+			if i == m.globalSearchSelected {
+				items = append(items, styles.SessionTabFocused.Render(label))
+			} else {
+				items = append(items, styles.SessionTab.Render(label))
+			}
+		}
+		return pad + strings.Join(items, "  ")
 	}
 
 	sessionName := m.selectedSessionName()
@@ -258,25 +281,12 @@ func (m Model) renderNoteRow() string {
 	if m.mode == modeCreate {
 		return pad + styles.HelpBar.Render("Close wizard to return")
 	}
-	if m.mode == modeQuickSwitch {
-		if len(m.switchMatches) == 0 {
-			return pad + styles.NoSessions.Render("no matches")
+	if m.mode == modeGlobalSearch {
+		count := len(m.globalSearchMatches)
+		if count == 0 {
+			return pad + styles.NoSessions.Render("no matches — tab navigate, esc cancel")
 		}
-		var items []string
-		limit := 5
-		if len(m.switchMatches) < limit {
-			limit = len(m.switchMatches)
-		}
-		for i := 0; i < limit; i++ {
-			s := m.switchMatches[i]
-			label := s.Repo + "/" + s.Name
-			if i == m.switchSelected {
-				items = append(items, styles.SessionTabFocused.Render(label))
-			} else {
-				items = append(items, styles.SessionTab.Render(label))
-			}
-		}
-		return pad + strings.Join(items, "  ")
+		return pad + styles.HelpBar.Render(fmt.Sprintf("%d matches — tab navigate, enter switch, esc cancel", count))
 	}
 	if m.mode == modeHelp {
 		return pad +
@@ -333,8 +343,8 @@ func (m Model) renderHintBarPlain() string {
 	if m.mode == modeCreate {
 		return tmuxHint("creating", "close wizard to return")
 	}
-	if m.mode == modeQuickSwitch {
-		return tmuxHint("↑↓", "select") + gap + tmuxHint("enter", "switch") + gap + tmuxHint("esc", "cancel")
+	if m.mode == modeGlobalSearch {
+		return tmuxHint("tab/↑↓", "navigate") + gap + tmuxHint("enter", "switch") + gap + tmuxHint("esc", "cancel")
 	}
 	if m.mode == modeHelp {
 		return tmuxHint("any key", "close")
@@ -360,13 +370,52 @@ func (m Model) renderHintBarPlain() string {
 
 	// Unfocused — show prefix shortcuts (navigation → sessions → panes)
 	return tmuxHint("`+space", "focus") + gap +
-		tmuxHint("`+tab", "cycle") + gap +
+		tmuxHint("`+tab", "hot cycle") + gap +
+		tmuxHint("`+/", "search") + gap +
 		tmuxHint("`+1-9", "jump") + gap +
 		tmuxHint("`+a", "agent") + gap +
 		tmuxHint("`+d/D", "split") + gap +
 		tmuxHint("`+w", "close") + gap +
 		tmuxHint("`+arrows", "nav") + gap +
 		tmuxHint("`+{/}", "swap")
+}
+
+func (m Model) renderHotRow() string {
+	pad := "      "
+	if len(m.hotRow) == 0 {
+		return pad + styles.HelpBar.Render("no recent sessions")
+	}
+
+	var items []string
+	for i, s := range m.hotRow {
+		label := s.Repo + "/" + s.Name
+		if s.Name == m.activeSession {
+			items = append(items, styles.HotRowActive.Render("*"+label))
+		} else if i == m.hotRowCycleIdx {
+			items = append(items, styles.SessionTabFocused.Render(label))
+		} else {
+			items = append(items, styles.HotRowItem.Render(label))
+		}
+	}
+	return pad + strings.Join(items, " | ")
+}
+
+// relativeTime returns a short human-readable time like "now", "2m", "1h", "3d".
+func relativeTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
 }
 
 // tmuxHint formats a key+description pair with tmux color codes.

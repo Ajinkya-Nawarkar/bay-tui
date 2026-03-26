@@ -23,7 +23,7 @@ const (
 	MainSession = "bay"
 
 	// TopbarHeight is the fixed height of the topbar in lines.
-	TopbarHeight = "5"
+	TopbarHeight = "7"
 
 	// Prefix kept for legacy/test compatibility.
 	Prefix = "bay-"
@@ -505,8 +505,12 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	run("bind-key", "Space", "run-shell",
 		"tmux send-keys -t .0 Space; tmux select-pane -t .0")
 
-	// `+Tab → cycle session (repeatable: `+Tab+Tab+Tab...)
+	// `+Tab → cycle hot row (repeatable: `+Tab+Tab+Tab...)
 	run("bind-key", "-r", "Tab", "send-keys", "-t", ".0", "Tab")
+
+	// `+/ → global search (send / to topbar + focus topbar pane)
+	run("bind-key", "/", "run-shell",
+		"tmux send-keys -t .0 /; tmux select-pane -t .0")
 
 	// `+1-9 → jump to session by index (1-indexed, max 9 sessions)
 	for i := 1; i <= 9; i++ {
