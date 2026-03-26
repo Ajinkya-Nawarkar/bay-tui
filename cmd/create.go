@@ -31,6 +31,10 @@ func InternalCreate(args []string) error {
 
 	repos := scanner.Scan(cfg.ScanDirs)
 
+	// Prepend ~ virtual repo (same as topbar does)
+	homeDir, _ := os.UserHomeDir()
+	repos = append([]scanner.Repo{{Name: "~", Path: homeDir}}, repos...)
+
 	// Build set of repos that already have sessions
 	sessions, _ := session.List()
 	reposWithSessions := make(map[string]bool)

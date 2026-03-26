@@ -58,16 +58,6 @@ func (m Model) View() string {
 	if m.mode == modeSettings {
 		row1 = styles.Title.Render(titleLabel) + "   " + styles.RepoTabActive.Render("⚙ Settings")
 	}
-	if m.mode == modeCreate {
-		createLabel := "creating new session..."
-		if m.createPreselected != "" {
-			createLabel = fmt.Sprintf("creating session for %s...", m.createPreselected)
-		}
-		row1 = styles.Title.Render(titleLabel) + "   " + strings.Join(repoTabs, " \u2502 ")
-		// Row 2 and 3 handled below
-		_ = createLabel
-	}
-
 	// Row 2: sessions for active repo (or status line during rename/delete)
 	row2 := m.renderSessionRow()
 
@@ -382,14 +372,4 @@ func (m Model) renderHintBarPlain() string {
 // tmuxHint formats a key+description pair with tmux color codes.
 func tmuxHint(key, desc string) string {
 	return "#[fg=#FBBF24,bold]" + key + " #[fg=#9CA3AF,nobold]" + desc
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen < 4 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-3] + "..."
 }

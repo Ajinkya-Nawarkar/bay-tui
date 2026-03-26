@@ -370,7 +370,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.BlurMsg:
-		// No-op: bay view should only exit via esc, not on pane click/blur.
+		m.focused = false
+		m.statusMsg = ""
 		return m, nil
 
 	case tea.KeyMsg:
@@ -513,9 +514,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.startCreate(m.activeRepoName())
 		case "m":
-			if m.focusRow == 0 {
-				m.statusMsg = "Select a session first"
-				return m, clearStatusAfter(constants.StatusClearDuration)
+			if m2, cmd, blocked := m.requireSessionRow(); blocked {
+				return m2, cmd
 			}
 			session := m.activeSession
 			if session == "" {
@@ -524,21 +524,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, func() tea.Msg { return SwitchToMemoryMsg{SessionName: session} }
 		case "d":
-			if m.focusRow == 0 {
-				m.statusMsg = "Select a session first"
-				return m, clearStatusAfter(constants.StatusClearDuration)
+			if m2, cmd, blocked := m.requireSessionRow(); blocked {
+				return m2, cmd
 			}
 			return m.startDelete()
 		case "R":
-			if m.focusRow == 0 {
-				m.statusMsg = "Select a session first"
-				return m, clearStatusAfter(constants.StatusClearDuration)
+			if m2, cmd, blocked := m.requireSessionRow(); blocked {
+				return m2, cmd
 			}
 			return m.startRename()
 		case "N":
-			if m.focusRow == 0 {
-				m.statusMsg = "Select a session first"
-				return m, clearStatusAfter(constants.StatusClearDuration)
+			if m2, cmd, blocked := m.requireSessionRow(); blocked {
+				return m2, cmd
 			}
 			return m.startEditNote()
 		case "S":
@@ -557,6 +554,51 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func unfocusCmd() tea.Msg {
 	baytmux.FocusBelowTopbar()
 	return nil
+}
+
+// safeKillWindow breaks the topbar out of a window, then kills it.
+// Returns the topbar's new window index, or -1 if the break failed (window not killed).
+func safeKillWindow(windowIndex int, context string) int {
+	topbarWindow := baytmux.BreakTopbarToOwnWindow()
+	if topbarWindow >= 0 {
+		baytmux.KillWindow(windowIndex)
+	} else {
+		logging.Warn("BreakTopbarToOwnWindow failed during %s — skipping KillWindow to protect topbar", context)
+	}
+	return topbarWindow
+}
+
+// returnTopbarToPrev moves the topbar back to the previous session window, if it still exists.
+func (m *Model) returnTopbarToPrev() {
+	if m.prevWindowIdx > 0 && baytmux.WindowExists(m.prevWindowIdx) {
+		baytmux.MoveTopbarToWindow(m.prevWindowIdx)
+		baytmux.SwitchToWindow(m.prevWindowIdx)
+	}
+}
+
+// toTmuxPanes converts session panes to the tmux package's SessionPane type.
+func toTmuxPanes(panes []session.Pane) []baytmux.SessionPane {
+	result := make([]baytmux.SessionPane, len(panes))
+	for i, p := range panes {
+		result[i] = baytmux.SessionPane{
+			Type:           p.Type,
+			Cwd:            p.Cwd,
+			Command:        p.Command,
+			Title:          p.Title,
+			AgentSessionID: p.AgentSessionID,
+		}
+	}
+	return result
+}
+
+// requireSessionRow returns early with a status message if focus is on the repo row.
+// Callers use: if m2, cmd, blocked := m.requireSessionRow(); blocked { return m2, cmd }
+func (m Model) requireSessionRow() (tea.Model, tea.Cmd, bool) {
+	if m.focusRow == 0 {
+		m.statusMsg = "Select a session first"
+		return m, clearStatusAfter(constants.StatusClearDuration), true
+	}
+	return m, nil, false
 }
 
 func (m Model) cycleSession() (tea.Model, tea.Cmd) {
@@ -725,16 +767,7 @@ func (m *Model) switchToSession(s *session.Session) error {
 
 	// Recreate panes after the topbar is safely in the window.
 	if coldBoot && len(s.Panes) > 0 {
-		var tmuxPanes []baytmux.SessionPane
-		for _, p := range s.Panes {
-			tmuxPanes = append(tmuxPanes, baytmux.SessionPane{
-				Type:           p.Type,
-				Cwd:            p.Cwd,
-				Command:        p.Command,
-				Title:          p.Title,
-				AgentSessionID: p.AgentSessionID,
-			})
-		}
+		tmuxPanes := toTmuxPanes(s.Panes)
 		baytmux.RecreateSessionPanes(windowIdx, tmuxPanes)
 		hooks.SyncPaneLayout(s.Name, windowIdx)
 		logging.Info("switchToSession %q: recreated %d panes", s.Name, len(tmuxPanes))
@@ -789,17 +822,7 @@ func warmBootSession(s *session.Session) {
 
 	// Recreate panes if any were saved
 	if len(s.Panes) > 0 {
-		var tmuxPanes []baytmux.SessionPane
-		for _, p := range s.Panes {
-			tmuxPanes = append(tmuxPanes, baytmux.SessionPane{
-				Type:           p.Type,
-				Cwd:            p.Cwd,
-				Command:        p.Command,
-				Title:          p.Title,
-				AgentSessionID: p.AgentSessionID,
-			})
-		}
-		baytmux.RecreateSessionPanes(idx, tmuxPanes)
+		baytmux.RecreateSessionPanes(idx, toTmuxPanes(s.Panes))
 		hooks.SyncPaneLayout(s.Name, idx)
 	}
 
@@ -826,13 +849,7 @@ func (m Model) updateConfirmDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		s, err := session.Load(m.deleteTarget)
 		if err == nil {
 			if s.TmuxWindow != 0 && baytmux.WindowExists(s.TmuxWindow) {
-				// Move topbar out before killing to avoid killing it along with the window.
-				topbarWindow = baytmux.BreakTopbarToOwnWindow()
-				if topbarWindow >= 0 {
-					baytmux.KillWindow(s.TmuxWindow)
-				} else {
-					logging.Warn("BreakTopbarToOwnWindow failed during delete of %q — skipping KillWindow to protect topbar", m.deleteTarget)
-				}
+				topbarWindow = safeKillWindow(s.TmuxWindow, fmt.Sprintf("delete of %q", m.deleteTarget))
 			}
 			if s.IsWorktree && s.WorktreeBranch != "" {
 				worktree.Remove(s.RepoPath, s.Repo, s.WorktreeBranch)
@@ -1076,17 +1093,10 @@ func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.mode = modeNormal
 
 	// Break topbar out before killing the settings window
-	if baytmux.BreakTopbarToOwnWindow() >= 0 {
-		baytmux.KillWindow(m.settingsWindowIdx)
-	} else {
-		logging.Warn("BreakTopbarToOwnWindow failed during settings close — skipping KillWindow to protect topbar")
-	}
+	safeKillWindow(m.settingsWindowIdx, "settings close")
 
 	// Move topbar back to original session window
-	if m.prevWindowIdx > 0 && baytmux.WindowExists(m.prevWindowIdx) {
-		baytmux.MoveTopbarToWindow(m.prevWindowIdx)
-		baytmux.SwitchToWindow(m.prevWindowIdx)
-	}
+	m.returnTopbarToPrev()
 
 	// Reload config and rebind keys
 	if cfg, err := config.Load(); err == nil {
@@ -1138,7 +1148,7 @@ func (m Model) startCreate(preselectedRepo string) (tea.Model, tea.Cmd) {
 
 	repoFlag := ""
 	if preselectedRepo != "" {
-		repoFlag = " --repo=" + preselectedRepo
+		repoFlag = " '--repo=" + preselectedRepo + "'"
 	}
 
 	shellCmd := fmt.Sprintf("%s internal create%s; if [ $? -eq 0 ]; then tmux send-keys -t %s c; else tmux send-keys -t %s C; fi; tmux select-pane -t %s; exit",
@@ -1164,17 +1174,10 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Success — session was created
 		m.mode = modeNormal
 
-		if baytmux.BreakTopbarToOwnWindow() >= 0 {
-			baytmux.KillWindow(m.createWindowIdx)
-		} else {
-			logging.Warn("BreakTopbarToOwnWindow failed during create — skipping KillWindow to protect topbar")
-		}
+		safeKillWindow(m.createWindowIdx, "create")
 
 		// Move topbar back
-		if m.prevWindowIdx > 0 && baytmux.WindowExists(m.prevWindowIdx) {
-			baytmux.MoveTopbarToWindow(m.prevWindowIdx)
-			baytmux.SwitchToWindow(m.prevWindowIdx)
-		}
+		m.returnTopbarToPrev()
 
 		// Read created session name and activate it
 		createdName := session.LoadCreatedSession()
@@ -1215,17 +1218,10 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Cancel — user escaped the wizard
 		m.mode = modeNormal
 
-		if baytmux.BreakTopbarToOwnWindow() >= 0 {
-			baytmux.KillWindow(m.createWindowIdx)
-		} else {
-			logging.Warn("BreakTopbarToOwnWindow failed during create cancel — skipping KillWindow to protect topbar")
-		}
+		safeKillWindow(m.createWindowIdx, "create cancel")
 
 		// Move topbar back
-		if m.prevWindowIdx > 0 && baytmux.WindowExists(m.prevWindowIdx) {
-			baytmux.MoveTopbarToWindow(m.prevWindowIdx)
-			baytmux.SwitchToWindow(m.prevWindowIdx)
-		}
+		m.returnTopbarToPrev()
 
 		_ = session.ClearCreatedSession()
 		m.refresh()
@@ -1401,11 +1397,7 @@ func (m Model) updateCleanup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			loaded, err := session.Load(s.Name)
 			if err == nil {
 				if loaded.TmuxWindow != 0 && baytmux.WindowExists(loaded.TmuxWindow) {
-					if baytmux.BreakTopbarToOwnWindow() >= 0 {
-						baytmux.KillWindow(loaded.TmuxWindow)
-					} else {
-						logging.Warn("BreakTopbarToOwnWindow failed during cleanup of %q — skipping KillWindow", s.Name)
-					}
+					safeKillWindow(loaded.TmuxWindow, fmt.Sprintf("cleanup of %q", s.Name))
 				}
 				if loaded.IsWorktree && loaded.WorktreeBranch != "" {
 					worktree.Remove(loaded.RepoPath, loaded.Repo, loaded.WorktreeBranch)

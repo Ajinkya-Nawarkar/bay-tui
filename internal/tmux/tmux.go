@@ -608,11 +608,7 @@ func CaptureAllDevPanes(windowIndex, lines int) (map[string]string, error) {
 		if paneID == topbarID {
 			continue
 		}
-		isAgentPane := strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude")
-		if !isAgentPane && bayBinPath != "" {
-			isAgentPane = strings.Contains(startCmd, bayBinPath+" agent")
-		}
-		if isAgentPane {
+		if isAgentCommand(startCmd) {
 			continue
 		}
 
@@ -624,6 +620,17 @@ func CaptureAllDevPanes(windowIndex, lines int) (map[string]string, error) {
 	}
 
 	return result, nil
+}
+
+// isAgentCommand returns true if the pane start command looks like an agent pane.
+func isAgentCommand(startCmd string) bool {
+	if strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude") {
+		return true
+	}
+	if bayBinPath != "" && strings.Contains(startCmd, bayBinPath+" agent") {
+		return true
+	}
+	return false
 }
 
 // PaneInfo holds information about a single tmux pane.
@@ -670,10 +677,7 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 		}
 
 		// Detect agent panes by checking if the start command contains "bay agent" or "claude"
-		isAgent := strings.Contains(startCmd, "bay agent") || strings.Contains(startCmd, "claude")
-		if !isAgent && bayBinPath != "" {
-			isAgent = strings.Contains(startCmd, bayBinPath+" agent")
-		}
+		isAgent := isAgentCommand(startCmd)
 		panes = append(panes, PaneInfo{
 			PaneID:  paneID,
 			Command: startCmd,
@@ -845,11 +849,6 @@ func RestartTopbar(topbarCmd string) error {
 		}
 	}
 	return nil
-}
-
-// ListBaySessions is kept for compatibility.
-func ListBaySessions() ([]string, error) {
-	return nil, nil
 }
 
 // CurrentWindowIndex returns the window index the tmux client is currently viewing.
