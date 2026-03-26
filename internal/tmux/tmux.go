@@ -782,12 +782,14 @@ type SessionPane struct {
 
 // agentLaunchCmd returns the shell command to launch an agent pane.
 // If a Claude session ID exists, resumes it; otherwise starts fresh.
+// Appends "; exec bash" so that if the agent exits (e.g. failed resume),
+// the pane falls back to an interactive shell instead of being destroyed.
 func agentLaunchCmd(agentSessionID string) string {
 	bin := bayBin()
 	if agentSessionID != "" {
-		return fmt.Sprintf("%s agent --resume %s", bin, agentSessionID)
+		return fmt.Sprintf("%s agent --resume %s; exec bash", bin, agentSessionID)
 	}
-	return bin + " agent"
+	return bin + " agent; exec bash"
 }
 
 // hintsFile returns the path where topbar hints are written for tmux status bar.
