@@ -485,12 +485,12 @@ func tmuxHint(key, desc string) string {
 // staleTimeThreshold is the minimum age before showing a relative time indicator.
 const staleTimeThreshold = 24 * time.Hour
 
-// diffDot returns a colored dot indicating git status for a session.
-// Green dot = clean, orange dot = dirty, empty = no data.
+// diffDot returns a colored git symbol indicating git status for a session.
+// Green ⑃ = clean, orange ⑃ = dirty, dim ⑃ = no data yet.
 func (m Model) diffDot(sessionName string) string {
 	cached := m.diffCache[sessionName]
 	if cached == nil {
-		return ""
+		return styles.HelpBar.Render("⑃ ")
 	}
 	if cached.Clean {
 		return styles.SuccessText.Render("⑃ ")
