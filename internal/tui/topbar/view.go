@@ -540,7 +540,7 @@ func (m Model) agentPulse(sessionName string) string {
 		return styles.HelpBar.Render(" ◇")
 	}
 	if m.isAgentActive(sessionName) {
-		return styles.ErrorText.Render(" ◆")
+		return styles.NoteText.Render(" ◆")
 	}
 	return styles.SuccessText.Render(" ◆")
 }
