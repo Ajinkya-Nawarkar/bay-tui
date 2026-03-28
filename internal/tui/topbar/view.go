@@ -311,6 +311,10 @@ func (m Model) renderExpandedView(w int) string {
 		}
 	}
 
+	if m.statusMsg != "" {
+		rows = append(rows, pad+styles.SuccessText.Render(m.statusMsg))
+	}
+
 	return strings.Join(rows, "\n")
 }
 
