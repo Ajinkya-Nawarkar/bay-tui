@@ -177,14 +177,8 @@ func (m Model) renderExpandedView(w int) string {
 		return m.renderModalContent(w, pad)
 	}
 
-	// Row 1: header + diff (right-aligned)
-	left := styles.CollapsedTitle.Render("bay")
-	diff := m.renderDiffInline()
-	gap := w - lipgloss.Width(pad+left) - lipgloss.Width(diff) - 4
-	if gap < 1 {
-		gap = 1
-	}
-	header := pad + left + strings.Repeat(" ", gap) + diff
+	// Row 1: header (diff moved to info row)
+	header := pad + styles.CollapsedTitle.Render("bay")
 
 	// Row 2: horizontal repo tabs
 	var repoTabs []string
