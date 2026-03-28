@@ -80,29 +80,38 @@ func (m Model) renderCollapsedView(w int) string {
 	row1 := pad + left + strings.Repeat(" ", gap) + diff
 
 	// Row 2: recent sessions (MRU from hot row, fill to width)
+	// Same-repo sessions get a distinct style to stand out from cross-repo ones.
+	activeRepo := ""
+	for _, s := range m.sessions {
+		if s.Name == m.activeSession {
+			activeRepo = s.Repo
+			break
+		}
+	}
+
 	var items []string
 	availWidth := w - len(pad) - 4 // border + padding
 	usedWidth := 0
 	for _, s := range m.hotRow {
-		label := s.Name
+		label := stripRepoPrefix(s.Name, s.Repo)
+		sameRepo := s.Repo == activeRepo
+
+		var rendered string
 		if s.Name == m.activeSession {
 			label = label + "*"
-			rendered := styles.CollapsedSessionActive.Render(label)
-			labelW := lipgloss.Width(rendered) + 2 // +2 for spacing
-			if usedWidth+labelW > availWidth && len(items) > 0 {
-				break
-			}
-			items = append(items, rendered)
-			usedWidth += labelW
+			rendered = styles.CollapsedSessionActive.Render(label)
+		} else if sameRepo {
+			rendered = styles.CollapsedSessionSameRepo.Render("[" + label + "]")
 		} else {
-			rendered := styles.CollapsedSession.Render(label)
-			labelW := lipgloss.Width(rendered) + 2
-			if usedWidth+labelW > availWidth && len(items) > 0 {
-				break
-			}
-			items = append(items, rendered)
-			usedWidth += labelW
+			rendered = styles.CollapsedSession.Render(label)
 		}
+
+		labelW := lipgloss.Width(rendered) + 2 // +2 for spacing
+		if usedWidth+labelW > availWidth && len(items) > 0 {
+			break
+		}
+		items = append(items, rendered)
+		usedWidth += labelW
 	}
 
 	row2 := pad
@@ -176,7 +185,7 @@ func (m Model) renderExpandedView(w int) string {
 		sessions := m.sessionsForRepoIdx(i)
 		var sessionItems []string
 		for j, s := range sessions {
-			label := s.Name
+			label := stripRepoPrefix(s.Name, repo.Name)
 			stale := isSessionStale(s)
 			isActive := s.Name == m.activeSession
 			isSelected := isFocusedRow && j == m.selectedSessionIdx
@@ -430,6 +439,16 @@ func relativeTime(t time.Time) string {
 // tmuxHint formats a key+description pair with tmux color codes.
 func tmuxHint(key, desc string) string {
 	return "#[fg=#FBBF24,bold]" + key + " #[fg=#9CA3AF,nobold]" + desc
+}
+
+// stripRepoPrefix removes the "repo-" prefix from a session name for cleaner display.
+func stripRepoPrefix(name, repo string) string {
+	prefix := strings.ToLower(repo) + "-"
+	lower := strings.ToLower(name)
+	if strings.HasPrefix(lower, prefix) && len(name) > len(prefix) {
+		return name[len(prefix):]
+	}
+	return name
 }
 
 // truncate shortens a string to maxLen with "…" if needed.

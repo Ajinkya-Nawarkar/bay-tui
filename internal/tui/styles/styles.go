@@ -172,6 +172,9 @@ var (
 	CollapsedSession = lipgloss.NewStyle().
 				Foreground(Muted)
 
+	CollapsedSessionSameRepo = lipgloss.NewStyle().
+					Foreground(Secondary) // cyan — same repo as active, matches repo color
+
 	CollapsedSessionActive = lipgloss.NewStyle().
 				Foreground(Success).
 				Bold(true)
