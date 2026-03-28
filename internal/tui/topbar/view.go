@@ -491,9 +491,9 @@ func (m Model) diffDot(sessionName string) string {
 		return ""
 	}
 	if cached.Clean {
-		return styles.SuccessText.Render("⑃")
+		return styles.SuccessText.Render("⑃ ")
 	}
-	return styles.NoteText.Render("⑃")
+	return styles.NoteText.Render("⑃ ")
 }
 
 // staleTime returns a dim relative time string if the session is older than the threshold.
