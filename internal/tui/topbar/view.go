@@ -105,7 +105,9 @@ func (m Model) renderCollapsedView(w int) string {
 				styles.CollapsedSessionActive.Render(label) +
 				styles.CollapsedSessionSameRepo.Render("]")
 		} else if sameRepo {
-			rendered = dot + styles.CollapsedSessionSameRepo.Render("["+label+"]") + age
+			rendered = dot + styles.CollapsedSessionSameRepo.Render("[") +
+				styles.CollapsedSession.Render(label) +
+				styles.CollapsedSessionSameRepo.Render("]") + age
 		} else {
 			rendered = dot + styles.CollapsedSession.Render(label) + age
 		}
