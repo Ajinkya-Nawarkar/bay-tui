@@ -367,6 +367,7 @@ func (m Model) renderModalContent(w int, pad string) string {
 			pad + styles.NoteText.Render("←→") + " " + styles.HelpBar.Render("navigate") + "  " +
 			styles.NoteText.Render("enter") + " " + styles.HelpBar.Render("activate") + "  " +
 			styles.NoteText.Render("n") + " " + styles.HelpBar.Render("new") + "  " +
+			styles.NoteText.Render("a") + " " + styles.HelpBar.Render("archive") + "  " +
 			styles.NoteText.Render("d") + " " + styles.HelpBar.Render("delete") + "  " +
 			styles.NoteText.Render("R") + " " + styles.HelpBar.Render("rename") + "  " +
 			styles.NoteText.Render("N") + " " + styles.HelpBar.Render("note") + "  " +
@@ -483,6 +484,7 @@ func (m Model) renderHintBarPlain() string {
 		return tmuxHint("←→↑↓", "navigate") + gap +
 			tmuxHint("enter", "activate") + gap +
 			tmuxHint("n", "new") + gap +
+			tmuxHint("a", "archive") + gap +
 			tmuxHint("d", "delete") + gap +
 			tmuxHint("R", "rename") + gap +
 			tmuxHint("N", "note") + gap +

@@ -633,6 +633,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m, func() tea.Msg { return SwitchToMemoryMsg{SessionName: sessionName} }
+		case "a":
+			if m.focusRow != 1 || len(m.activeRepoSessions()) == 0 {
+				m.statusMsg = "Select a session first"
+				return m, clearStatusAfter(constants.StatusClearDuration)
+			}
+			return m.archiveSelected()
 		case "d":
 			if m.focusRow != 1 || len(m.activeRepoSessions()) == 0 {
 				m.statusMsg = "Select a session first"
@@ -1603,6 +1609,46 @@ func (m Model) updateCleanup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m2, cmd
 	}
 	return m, nil
+}
+
+// archiveSelected archives the currently selected session.
+func (m Model) archiveSelected() (tea.Model, tea.Cmd) {
+	target := m.selectedSessionName()
+	if target == "" {
+		m.statusMsg = "No session to archive"
+		return m, clearStatusAfter(constants.StatusClearDuration)
+	}
+
+	s, err := session.Load(target)
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	if s.TmuxWindow != 0 && baytmux.WindowExists(s.TmuxWindow) {
+		if target == m.activeSession {
+			safeKillWindow(s.TmuxWindow, fmt.Sprintf("archive %q", target))
+			m.activeSession = ""
+			m.activeWindowIdx = 0
+		} else {
+			safeKillWindow(s.TmuxWindow, fmt.Sprintf("archive %q", target))
+		}
+	}
+
+	session.Archive(target)
+	m.refresh()
+
+	// Adjust cursor if it's past the end
+	sessions := m.activeRepoSessions()
+	if m.selectedSessionIdx >= len(sessions) && m.selectedSessionIdx > 0 {
+		m.selectedSessionIdx = len(sessions) - 1
+	}
+	if len(sessions) == 0 {
+		m.focusRow = 0
+	}
+
+	m.statusMsg = fmt.Sprintf("Archived '%s'", target)
+	return m, clearStatusAfter(constants.StatusClearDuration)
 }
 
 // startArchive launches the archive browser in a dev pane (mirrors startCreate pattern).

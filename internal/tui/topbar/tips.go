@@ -78,6 +78,7 @@ func (m Model) focusedSessionTips() []tip {
 		}
 	}
 
+	tips = append(tips, tip{"a", "archive session"})
 	tips = append(tips, tip{"d", "delete session"})
 	tips = append(tips, tip{"R", "rename session"})
 	if archived, _ := session.ListArchived(); len(archived) > 0 {

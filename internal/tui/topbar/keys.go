@@ -16,8 +16,9 @@ type keyMap struct {
 	Enter  key.Binding
 	New    key.Binding
 	Memory key.Binding
-	Delete key.Binding
-	Rename key.Binding
+	ArchiveSession key.Binding
+	Delete         key.Binding
+	Rename         key.Binding
 	Note         key.Binding
 	Archive      key.Binding
 	Settings     key.Binding
@@ -67,6 +68,10 @@ var keys = keyMap{
 	Memory: key.NewBinding(
 		key.WithKeys("m"),
 		key.WithHelp("m", "memory"),
+	),
+	ArchiveSession: key.NewBinding(
+		key.WithKeys("a"),
+		key.WithHelp("a", "archive session"),
 	),
 	Delete: key.NewBinding(
 		key.WithKeys("d"),
