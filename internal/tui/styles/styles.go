@@ -127,6 +127,62 @@ var (
 			Foreground(Success).
 			Bold(true)
 
+	// Grid topbar styles (expanded view)
+	GridRepoName = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	GridRepoNameActive = lipgloss.NewStyle().
+				Foreground(Secondary).
+				Bold(true)
+
+	GridRepoNameFocused = lipgloss.NewStyle().
+				Foreground(Focus).
+				Bold(true)
+
+	GridSessionItem = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	GridSessionActive = lipgloss.NewStyle().
+				Foreground(Success).
+				Bold(true)
+
+	GridSessionSelected = lipgloss.NewStyle().
+				Foreground(Focus).
+				Bold(true)
+
+	GridSessionStale = lipgloss.NewStyle().
+				Foreground(Dim).
+				Strikethrough(true)
+
+	GridPlus = lipgloss.NewStyle().
+			Foreground(Muted)
+
+	GridPlusFocused = lipgloss.NewStyle().
+			Foreground(Focus).
+			Bold(true)
+
+	// Collapsed topbar styles (unfocused view)
+	CollapsedTitle = lipgloss.NewStyle().
+			Foreground(Primary).
+			Bold(true)
+
+	CollapsedRepo = lipgloss.NewStyle().
+			Foreground(Secondary)
+
+	CollapsedSession = lipgloss.NewStyle().
+				Foreground(Muted)
+
+	CollapsedSessionActive = lipgloss.NewStyle().
+				Foreground(Success).
+				Bold(true)
+
+	CollapsedDiff = lipgloss.NewStyle().
+			Foreground(Dim)
+
+	CollapsedNote = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#F97316")).
+			Italic(true)
+
 	// Layout
 	AppContainer = lipgloss.NewStyle().
 			Padding(0, 1)

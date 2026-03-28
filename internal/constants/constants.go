@@ -77,10 +77,12 @@ const StaleDays = 30
 // --- TUI layout ---
 
 const (
-	MinTermWidth     = 20
-	DefaultTermWidth = 80
-	CleanupPageSize  = 5
-	MaxHotRowItems   = 5
+	MinTermWidth          = 20
+	DefaultTermWidth      = 80
+	CleanupPageSize       = 5
+	MaxHotRowItems        = 5
+	TopbarCollapsedHeight = 4  // 2 content rows + 2 border lines
+	TopbarMaxGridHeight   = 15 // safety cap for expanded grid
 )
 
 // HotRowReorderThreshold is the minimum time a session must be active

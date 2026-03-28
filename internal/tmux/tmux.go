@@ -22,9 +22,6 @@ const (
 	// MainSession is the single tmux session bay uses.
 	MainSession = "bay"
 
-	// TopbarHeight is the fixed height of the topbar in lines.
-	TopbarHeight = "7"
-
 	// Prefix kept for legacy/test compatibility.
 	Prefix = "bay-"
 )
@@ -70,6 +67,40 @@ func loadTopbarPaneID() string {
 		return ""
 	}
 	return strings.TrimSpace(string(b))
+}
+
+// topbarHeightFile returns the path where the desired topbar height is persisted.
+func topbarHeightFile() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".bay", ".topbar-height")
+}
+
+// SaveTopbarHeight writes the desired topbar pane height to disk.
+// Shell hooks read this file to resize the topbar after layout-changing events.
+func SaveTopbarHeight(height int) {
+	f := topbarHeightFile()
+	os.MkdirAll(filepath.Dir(f), 0o755)
+	os.WriteFile(f, []byte(fmt.Sprintf("%d", height)), 0o644)
+}
+
+// loadTopbarHeight reads the persisted topbar height from disk.
+// Returns the collapsed height constant if the file is missing or invalid.
+func loadTopbarHeight() string {
+	b, err := os.ReadFile(topbarHeightFile())
+	if err != nil {
+		return fmt.Sprintf("%d", constants.TopbarCollapsedHeight)
+	}
+	s := strings.TrimSpace(string(b))
+	if _, err := strconv.Atoi(s); err != nil {
+		return fmt.Sprintf("%d", constants.TopbarCollapsedHeight)
+	}
+	return s
+}
+
+// ResizeTopbarPane resizes the topbar pane to the given height and persists it.
+func ResizeTopbarPane(height int) {
+	SaveTopbarHeight(height)
+	run("resize-pane", "-t", TopbarPaneTarget(), "-y", fmt.Sprintf("%d", height))
 }
 
 // paneExists returns true if the given tmux pane ID is alive in the bay session.
@@ -172,6 +203,9 @@ func CreateMainSession(topbarCmd string) error {
 		saveTopbarPaneID(topbarPaneID)
 	}
 
+	// Initialize height file with collapsed height for shell hooks.
+	SaveTopbarHeight(constants.TopbarCollapsedHeight)
+
 	return nil
 }
 
@@ -260,7 +294,7 @@ func MoveTopbarToWindow(windowIndex int) error {
 	// Check if topbar is already in the target window — skip move if so.
 	currentWindow, err := run("display-message", "-t", target, "-p", "#{window_index}")
 	if err == nil && strings.TrimSpace(currentWindow) == fmt.Sprintf("%d", windowIndex) {
-		run("resize-pane", "-t", target, "-y", TopbarHeight)
+		run("resize-pane", "-t", target, "-y", loadTopbarHeight())
 		return nil
 	}
 
@@ -268,12 +302,12 @@ func MoveTopbarToWindow(windowIndex int) error {
 
 	// move-pane atomically moves the pane to the target window above the first pane.
 	// -f makes it span the full window width, not just the target pane's column.
-	if out, err := run("move-pane", "-fvb", "-s", target, "-t", targetPane, "-l", TopbarHeight); err != nil {
+	if out, err := run("move-pane", "-fvb", "-s", target, "-t", targetPane, "-l", loadTopbarHeight()); err != nil {
 		return fmt.Errorf("move-pane: %w (tmux: %s)", err, out)
 	}
 
 	// Lock topbar height
-	run("resize-pane", "-t", TopbarPaneTarget(), "-y", TopbarHeight)
+	run("resize-pane", "-t", TopbarPaneTarget(), "-y", loadTopbarHeight())
 
 	return nil
 }
@@ -348,7 +382,7 @@ func AddDevPane(windowIndex int, dir, command string) error {
 	}
 
 	// Lock topbar height
-	run("resize-pane", "-t", TopbarPaneTarget(), "-y", TopbarHeight)
+	run("resize-pane", "-t", TopbarPaneTarget(), "-y", loadTopbarHeight())
 
 	return nil
 }
@@ -435,10 +469,12 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 	run("set-option", "-g", "window-status-format", "")
 	run("set-option", "-g", "window-status-current-format", "")
 
-	// Shell snippet that resolves the topbar pane ID at runtime from the persisted file.
-	// This stays correct even after the topbar moves between windows.
+	// Shell snippets that resolve the topbar pane ID and desired height at runtime
+	// from persisted files. This stays correct even after the topbar moves between windows.
 	topbarIDFile := "$HOME/.bay/.topbar-pane-id"
-	resizeTopbar := fmt.Sprintf("tmux resize-pane -t $(cat %s) -y %s 2>/dev/null || true", topbarIDFile, TopbarHeight)
+	topbarHtFile := "$HOME/.bay/.topbar-height"
+	resizeTopbar := fmt.Sprintf("tmux resize-pane -t $(cat %s) -y $(cat %s 2>/dev/null || echo %d) 2>/dev/null || true",
+		topbarIDFile, topbarHtFile, constants.TopbarCollapsedHeight)
 
 	// Hooks: re-lock topbar height on layout-changing events.
 	// after-split-window and after-kill-pane also sync pane layout to session YAML
@@ -539,7 +575,9 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 // afterSplitHookCmd returns the run-shell command for the after-split-window hook.
 func afterSplitHookCmd() string {
 	topbarIDFile := "$HOME/.bay/.topbar-pane-id"
-	resizeTopbar := fmt.Sprintf("tmux resize-pane -t $(cat %s) -y %s 2>/dev/null || true", topbarIDFile, TopbarHeight)
+	topbarHtFile := "$HOME/.bay/.topbar-height"
+	resizeTopbar := fmt.Sprintf("tmux resize-pane -t $(cat %s) -y $(cat %s 2>/dev/null || echo %d) 2>/dev/null || true",
+		topbarIDFile, topbarHtFile, constants.TopbarCollapsedHeight)
 	return fmt.Sprintf("run-shell '%s; %s; %s'",
 		"tmux select-pane -T ''", resizeTopbar, bayBin()+" internal sync-panes &")
 }
@@ -769,7 +807,7 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 	}
 
 	// Lock topbar height after adding panes
-	run("resize-pane", "-t", TopbarPaneTarget(), "-y", TopbarHeight)
+	run("resize-pane", "-t", TopbarPaneTarget(), "-y", loadTopbarHeight())
 
 	return nil
 }
@@ -836,7 +874,7 @@ func EnsureDevPane(windowIndex int, dir string) error {
 	}
 
 	// Lock topbar height back to 5 lines.
-	run("resize-pane", "-t", TopbarPaneTarget(), "-y", TopbarHeight)
+	run("resize-pane", "-t", TopbarPaneTarget(), "-y", loadTopbarHeight())
 	return nil
 }
 
