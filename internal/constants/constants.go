@@ -81,7 +81,7 @@ const (
 	DefaultTermWidth      = 80
 	CleanupPageSize       = 5
 	MaxHotRowItems        = 5
-	TopbarCollapsedHeight = 4  // 2 content rows + 2 border lines
+	TopbarCollapsedHeight = 5  // 3 content rows + 2 border lines
 	TopbarMaxGridHeight   = 15 // safety cap for expanded grid
 )
 

@@ -60,24 +60,16 @@ func (m Model) View() string {
 func (m Model) renderCollapsedView(w int) string {
 	pad := "  "
 
-	// Row 1: title + active repo + diff (right-aligned)
-	left := styles.CollapsedTitle.Render("bay")
+	// Row 1: title + active repo
+	row1 := pad + styles.CollapsedTitle.Render("bay")
 	if m.activeSession != "" {
-		// Find active session's repo
 		for _, s := range m.sessions {
 			if s.Name == m.activeSession {
-				left += " " + styles.CollapsedRepo.Render("· "+s.Repo)
+				row1 += " " + styles.CollapsedRepo.Render("· "+s.Repo)
 				break
 			}
 		}
 	}
-
-	diff := m.renderDiffInline()
-	gap := w - lipgloss.Width(pad+left) - lipgloss.Width(diff) - 4 // 4 for border+padding
-	if gap < 1 {
-		gap = 1
-	}
-	row1 := pad + left + strings.Repeat(" ", gap) + diff
 
 	// Row 2: recent sessions (MRU from hot row, fill to width)
 	// Same-repo sessions get a distinct style to stand out from cross-repo ones.
@@ -89,27 +81,34 @@ func (m Model) renderCollapsedView(w int) string {
 		}
 	}
 
+	superscripts := []string{"¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"}
+
 	var items []string
 	availWidth := w - len(pad) - 4 // border + padding
 	usedWidth := 0
-	for _, s := range m.hotRow {
+	for idx, s := range m.hotRow {
 		label := stripRepoPrefix(s.Name, s.Repo)
 		sameRepo := s.Repo == activeRepo
+
+		num := ""
+		if idx < len(superscripts) {
+			num = styles.HelpBar.Render(superscripts[idx])
+		}
 
 		dot := m.diffDot(s.Name)
 		age := staleTime(s.LastActiveAt)
 
 		var rendered string
 		if s.Name == m.activeSession {
-			rendered = dot + styles.CollapsedSessionSameRepo.Render("[") +
+			rendered = num + dot + styles.CollapsedSessionSameRepo.Render("[") +
 				styles.CollapsedSessionActive.Render(label) +
 				styles.CollapsedSessionSameRepo.Render("]")
 		} else if sameRepo {
-			rendered = dot + styles.CollapsedSessionSameRepo.Render("[") +
+			rendered = num + dot + styles.CollapsedSessionSameRepo.Render("[") +
 				styles.CollapsedSession.Render(label) +
 				styles.CollapsedSessionSameRepo.Render("]") + age
 		} else {
-			rendered = dot + styles.CollapsedSession.Render(label) + age
+			rendered = num + dot + styles.CollapsedSession.Render(label) + age
 		}
 
 		labelW := lipgloss.Width(rendered) + 2 // +2 for spacing
@@ -127,7 +126,42 @@ func (m Model) renderCollapsedView(w int) string {
 		row2 += strings.Join(items, "  ")
 	}
 
-	return row1 + "\n" + row2
+	// Row 3: note (left) + branch + diff (right)
+	var noteLeft, branchDiffRight string
+	if m.activeSession != "" {
+		for _, s := range m.sessions {
+			if s.Name == m.activeSession {
+				if s.Note != "" {
+					noteLeft = styles.CollapsedNote.Render(s.Note)
+				}
+				if s.WorktreeBranch != "" {
+					branchDiffRight = styles.SessionName.Render("⑃ "+s.WorktreeBranch)
+				}
+				break
+			}
+		}
+	}
+	diff := m.renderDiffInline()
+	if diff != "" {
+		if branchDiffRight != "" {
+			branchDiffRight += "  " + diff
+		} else {
+			branchDiffRight = diff
+		}
+	}
+
+	row3 := pad
+	if noteLeft != "" || branchDiffRight != "" {
+		rightW := lipgloss.Width(branchDiffRight)
+		leftW := lipgloss.Width(pad + noteLeft)
+		gap := w - leftW - rightW - 4 // border + padding
+		if gap < 1 {
+			gap = 1
+		}
+		row3 = pad + noteLeft + strings.Repeat(" ", gap) + branchDiffRight
+	}
+
+	return row1 + "\n" + row2 + "\n" + row3
 }
 
 // renderExpandedView renders the full grid for focused/modal modes.
