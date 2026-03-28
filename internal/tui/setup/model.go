@@ -142,7 +142,8 @@ func ensureClaudeHook() {
 	// Always use the stable install path
 	hookCmd := filepath.Join(installDir(), "bay") + " context"
 
-	// Check existing SessionStart hooks
+	// Check and add SessionStart hook if missing
+	hasSessionStart := false
 	if existing, ok := hooks["SessionStart"]; ok {
 		if arr, ok := existing.([]any); ok {
 			for _, item := range arr {
@@ -151,7 +152,7 @@ func ensureClaudeHook() {
 						for _, h := range innerHooks {
 							if hm, ok := h.(map[string]any); ok {
 								if cmd, _ := hm["command"].(string); strings.HasSuffix(cmd, "bay context") {
-									return // Already configured
+									hasSessionStart = true
 								}
 							}
 						}
@@ -161,22 +162,21 @@ func ensureClaudeHook() {
 		}
 	}
 
-	// Add bay context hook
-	bayHook := map[string]any{
-		"matcher": "",
-		"hooks": []any{
-			map[string]any{
-				"type":    "command",
-				"command": hookCmd,
+	if !hasSessionStart {
+		bayHook := map[string]any{
+			"matcher": "",
+			"hooks": []any{
+				map[string]any{
+					"type":    "command",
+					"command": hookCmd,
+				},
 			},
-		},
-	}
-
-	// Append to existing or create new
-	if existing, ok := hooks["SessionStart"].([]any); ok {
-		hooks["SessionStart"] = append(existing, bayHook)
-	} else {
-		hooks["SessionStart"] = []any{bayHook}
+		}
+		if existing, ok := hooks["SessionStart"].([]any); ok {
+			hooks["SessionStart"] = append(existing, bayHook)
+		} else {
+			hooks["SessionStart"] = []any{bayHook}
+		}
 	}
 
 	// Add PreToolUse heartbeat hook for agent activity detection
@@ -335,7 +335,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case stepDone:
-			if msg.String() == "enter" || msg.String() == "q" {
+			if msg.String() == "enter" || msg.String() == "q" || msg.String() == "ctrl+c" {
 				return m, func() tea.Msg {
 					return DoneMsg{Config: m.cfg}
 				}
