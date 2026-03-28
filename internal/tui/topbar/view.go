@@ -98,8 +98,9 @@ func (m Model) renderCollapsedView(w int) string {
 
 		var rendered string
 		if s.Name == m.activeSession {
-			label = label + "*"
-			rendered = styles.CollapsedSessionActive.Render(label)
+			rendered = styles.CollapsedSessionSameRepo.Render("[") +
+				styles.CollapsedSessionActive.Render(label) +
+				styles.CollapsedSessionSameRepo.Render("]")
 		} else if sameRepo {
 			rendered = styles.CollapsedSessionSameRepo.Render("[" + label + "]")
 		} else {
@@ -189,10 +190,6 @@ func (m Model) renderExpandedView(w int) string {
 			stale := isSessionStale(s)
 			isActive := s.Name == m.activeSession
 			isSelected := isFocusedRow && j == m.selectedSessionIdx
-
-			if isActive {
-				label += "*"
-			}
 
 			switch {
 			case isSelected:
