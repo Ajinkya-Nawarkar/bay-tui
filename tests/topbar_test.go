@@ -182,34 +182,32 @@ func TestHotRowReorderThreshold(t *testing.T) {
 	}
 }
 
-// modeGlobalSearch is mode value 6 (0-indexed in the iota).
-const modeGlobalSearch = 6
+// modeSearch is mode value 10 (0-indexed in the iota).
+// "/" now launches a subprocess search TUI (requires tmux), so it enters modeSearch.
+const modeSearch = 10
 
-func TestGlobalSearchFromUnfocused(t *testing.T) {
+func TestSearchFromUnfocused(t *testing.T) {
 	m := newTestTopbar()
 
-	// "/" from unfocused state should enter global search mode
+	// "/" from unfocused state should enter search mode (subprocess launch)
 	m = sendKey(m, "/")
-	if m.Mode() != modeGlobalSearch {
-		t.Errorf("expected mode %d (globalSearch), got %d", modeGlobalSearch, m.Mode())
+	if m.Mode() != modeSearch {
+		t.Errorf("expected mode %d (search), got %d", modeSearch, m.Mode())
 	}
 }
 
-func TestGlobalSearchEscUnfocuses(t *testing.T) {
+func TestSearchSignalCancelRestores(t *testing.T) {
 	m := newTestTopbar()
 
-	// Start global search from unfocused state
+	// Enter search mode
 	m = sendKey(m, "/")
-	if m.Mode() != modeGlobalSearch {
-		t.Fatalf("expected mode %d (globalSearch), got %d", modeGlobalSearch, m.Mode())
+	if m.Mode() != modeSearch {
+		t.Fatalf("expected mode %d (search), got %d", modeSearch, m.Mode())
 	}
 
-	// Esc should exit search AND unfocus (since we started unfocused)
-	m = sendSpecialKey(m, tea.KeyEscape)
+	// Receiving "F" (cancel signal from subprocess) should return to normal
+	m = sendKey(m, "F")
 	if m.Mode() != 0 { // modeNormal
 		t.Errorf("expected mode 0 (normal), got %d", m.Mode())
-	}
-	if m.IsFocused() {
-		t.Error("esc from unfocused global search should return focus to dev pane")
 	}
 }

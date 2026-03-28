@@ -37,6 +37,8 @@ const (
 	modeCleanup
 	modeHelp
 	modeArchive
+	modeSearch
+	modeStatus
 )
 
 type clearStatusMsg struct{}
@@ -122,6 +124,10 @@ type Model struct {
 	// Archive state
 	archiveWindowIdx int
 	archiveCount     int
+
+	// Search/Status subprocess state
+	searchWindowIdx int
+	statusWindowIdx int
 
 	// Diff summary cache: session name → diff summary
 	diffCache map[string]*diffSummary
@@ -495,6 +501,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeArchive {
 			return m.updateArchive(msg)
 		}
+		if m.mode == modeSearch {
+			return m.updateSearch(msg)
+		}
+		if m.mode == modeStatus {
+			return m.updateStatusMode(msg)
+		}
 		if m.mode == modeHelp {
 			m.mode = modeNormal
 			return m, nil
@@ -542,7 +554,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case key == "tab":
 				return m.cycleHotRow()
 			case key == "/":
-				return m.startGlobalSearch()
+				return m.startSearch()
 			case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
 				return m.jumpToSession(int(key[0] - '1'))
 			}
@@ -660,7 +672,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "S":
 			return m.startSettings()
 		case "/":
-			return m.startGlobalSearch()
+			return m.startSearch()
+		case "s":
+			return m.startStatusMode()
 		case "?":
 			m.mode = modeHelp
 			return m, nil
@@ -1773,6 +1787,198 @@ func (m Model) updateArchive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		windowIdx := m.prevWindowIdx
 		return m, func() tea.Msg {
 			baytmux.RestorePaneBorders()
+			baytmux.FocusDevPane(windowIdx)
+			return tea.ClearScreen()
+		}
+	}
+
+	return m, nil
+}
+
+// --- Search subprocess ---
+
+func (m Model) startSearch() (tea.Model, tea.Cmd) {
+	m.prevWindowIdx = m.activeWindowIdx
+
+	newWindowIdx, err := baytmux.CreateSessionWindow(config.BayDir())
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	if err := baytmux.MoveTopbarToWindow(newWindowIdx); err != nil {
+		baytmux.KillWindow(newWindowIdx)
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	if err := baytmux.SwitchToWindow(newWindowIdx); err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	bayBin, err := os.Executable()
+	if err != nil {
+		bayBin = "bay"
+	}
+	topbarTarget := baytmux.TopbarPaneTarget()
+
+	shellCmd := fmt.Sprintf("%s internal search; if [ $? -eq 0 ]; then tmux send-keys -t %s f; else tmux send-keys -t %s F; fi; tmux select-pane -t %s; exit",
+		bayBin, topbarTarget, topbarTarget, topbarTarget)
+	baytmux.SendToDevPane(newWindowIdx, shellCmd)
+
+	m.mode = modeSearch
+	m.searchWindowIdx = newWindowIdx
+	m.focused = false
+
+	windowIdx := newWindowIdx
+	return m, func() tea.Msg {
+		baytmux.FocusDevPane(windowIdx)
+		return tea.ClearScreen()
+	}
+}
+
+func (m Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "f":
+		// Success — user selected a session
+		m.mode = modeNormal
+		safeKillWindow(m.searchWindowIdx, "search")
+		m.returnTopbarToPrev()
+
+		targetName := session.LoadSwitchTarget()
+		_ = session.ClearSwitchTarget()
+		m.refresh()
+
+		if targetName != "" {
+			if s, err := session.Load(targetName); err == nil {
+				for i, r := range m.repos {
+					if r.Name == s.Repo {
+						m.activeRepoIdx = i
+						m.plusSelected = false
+						break
+					}
+				}
+				return m.activateSession(s)
+			}
+		}
+
+		m.focused = true
+		windowIdx := m.prevWindowIdx
+		return m, func() tea.Msg {
+			baytmux.FocusDevPane(windowIdx)
+			return tea.ClearScreen()
+		}
+
+	case "F":
+		// Cancel
+		m.mode = modeNormal
+		safeKillWindow(m.searchWindowIdx, "search cancel")
+		m.returnTopbarToPrev()
+		_ = session.ClearSwitchTarget()
+		m.refresh()
+		m.focused = true
+
+		windowIdx := m.prevWindowIdx
+		return m, func() tea.Msg {
+			baytmux.FocusDevPane(windowIdx)
+			return tea.ClearScreen()
+		}
+	}
+
+	return m, nil
+}
+
+// --- Status subprocess ---
+
+func (m Model) startStatusMode() (tea.Model, tea.Cmd) {
+	m.prevWindowIdx = m.activeWindowIdx
+
+	newWindowIdx, err := baytmux.CreateSessionWindow(config.BayDir())
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	if err := baytmux.MoveTopbarToWindow(newWindowIdx); err != nil {
+		baytmux.KillWindow(newWindowIdx)
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	if err := baytmux.SwitchToWindow(newWindowIdx); err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	bayBin, err := os.Executable()
+	if err != nil {
+		bayBin = "bay"
+	}
+	topbarTarget := baytmux.TopbarPaneTarget()
+
+	shellCmd := fmt.Sprintf("%s internal status; if [ $? -eq 0 ]; then tmux send-keys -t %s v; else tmux send-keys -t %s V; fi; tmux select-pane -t %s; exit",
+		bayBin, topbarTarget, topbarTarget, topbarTarget)
+	baytmux.SendToDevPane(newWindowIdx, shellCmd)
+
+	m.mode = modeStatus
+	m.statusWindowIdx = newWindowIdx
+	m.focused = false
+
+	windowIdx := newWindowIdx
+	return m, func() tea.Msg {
+		baytmux.FocusDevPane(windowIdx)
+		return tea.ClearScreen()
+	}
+}
+
+func (m Model) updateStatusMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "v":
+		// Success — user selected a session
+		m.mode = modeNormal
+		safeKillWindow(m.statusWindowIdx, "status")
+		m.returnTopbarToPrev()
+
+		targetName := session.LoadSwitchTarget()
+		_ = session.ClearSwitchTarget()
+		m.refresh()
+
+		if targetName != "" {
+			if s, err := session.Load(targetName); err == nil {
+				for i, r := range m.repos {
+					if r.Name == s.Repo {
+						m.activeRepoIdx = i
+						m.plusSelected = false
+						break
+					}
+				}
+				return m.activateSession(s)
+			}
+		}
+
+		m.focused = true
+		windowIdx := m.prevWindowIdx
+		return m, func() tea.Msg {
+			baytmux.FocusDevPane(windowIdx)
+			return tea.ClearScreen()
+		}
+
+	case "V":
+		// Cancel
+		m.mode = modeNormal
+		safeKillWindow(m.statusWindowIdx, "status cancel")
+		m.returnTopbarToPrev()
+		_ = session.ClearSwitchTarget()
+		m.refresh()
+		m.focused = true
+
+		windowIdx := m.prevWindowIdx
+		return m, func() tea.Msg {
 			baytmux.FocusDevPane(windowIdx)
 			return tea.ClearScreen()
 		}

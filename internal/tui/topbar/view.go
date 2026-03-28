@@ -376,6 +376,7 @@ func (m Model) renderModalContent(w int, pad string) string {
 			styles.NoteText.Render("R") + " " + styles.HelpBar.Render("rename") + "  " +
 			styles.NoteText.Render("N") + " " + styles.HelpBar.Render("note") + "  " +
 			styles.NoteText.Render("/") + " " + styles.HelpBar.Render("search") + "  " +
+			styles.NoteText.Render("s") + " " + styles.HelpBar.Render("status") + "  " +
 			styles.NoteText.Render("m") + " " + styles.HelpBar.Render("memory") + "  " +
 			styles.NoteText.Render("A") + " " + styles.HelpBar.Render("archive") + "  " +
 			styles.NoteText.Render("S") + " " + styles.HelpBar.Render("settings") + "  " +
@@ -427,6 +428,12 @@ func (m Model) renderModalContent(w int, pad string) string {
 		}
 		return header + "\n" + pad + strings.Join(items, "  ") +
 			"\n" + pad + styles.HelpBar.Render(fmt.Sprintf("%d of %d selected — enter delete, space toggle, a all, esc skip", checked, len(m.cleanupSessions)))
+	case modeSearch:
+		return header + "\n" + pad + styles.HelpBar.Render("Searching sessions...") +
+			"\n" + pad + styles.HelpBar.Render("Close search to return")
+	case modeStatus:
+		return header + "\n" + pad + styles.HelpBar.Render("Status dashboard...") +
+			"\n" + pad + styles.HelpBar.Render("Close dashboard to return")
 	}
 
 	return header
@@ -480,6 +487,12 @@ func (m Model) renderHintBarPlain() string {
 	if m.mode == modeArchive {
 		return tmuxHint("browsing", "archived sessions below")
 	}
+	if m.mode == modeSearch {
+		return tmuxHint("searching", "close to return")
+	}
+	if m.mode == modeStatus {
+		return tmuxHint("status", "close to return")
+	}
 	if m.mode == modeCleanup {
 		return tmuxHint("space", "toggle") + gap + tmuxHint("a", "all") + gap + tmuxHint("enter", "delete") + gap + tmuxHint("esc", "skip")
 	}
@@ -488,11 +501,11 @@ func (m Model) renderHintBarPlain() string {
 		return tmuxHint("←→↑↓", "navigate") + gap +
 			tmuxHint("enter", "activate") + gap +
 			tmuxHint("n", "new") + gap +
-			tmuxHint("a", "archive") + gap +
 			tmuxHint("d", "delete") + gap +
 			tmuxHint("R", "rename") + gap +
 			tmuxHint("N", "note") + gap +
 			tmuxHint("/", "search") + gap +
+			tmuxHint("s", "status") + gap +
 			tmuxHint("m", "memory") + gap +
 			tmuxHint("A", "archive") + gap +
 			tmuxHint("S", "settings") + gap +

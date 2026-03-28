@@ -21,6 +21,7 @@ type keyMap struct {
 	Rename         key.Binding
 	Note         key.Binding
 	Archive      key.Binding
+	Status       key.Binding
 	Settings     key.Binding
 	GlobalSearch key.Binding
 	Help         key.Binding
@@ -88,6 +89,10 @@ var keys = keyMap{
 	Archive: key.NewBinding(
 		key.WithKeys("A"),
 		key.WithHelp("A", "archived sessions"),
+	),
+	Status: key.NewBinding(
+		key.WithKeys("s"),
+		key.WithHelp("s", "session status"),
 	),
 	Settings: key.NewBinding(
 		key.WithKeys("S"),
