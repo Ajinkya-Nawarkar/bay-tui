@@ -123,5 +123,12 @@ func Agent(args []string) error {
 		return fmt.Errorf("%s not found in PATH", binaryName)
 	}
 
-	return syscall.Exec(binaryPath, execArgs, os.Environ())
+	// Pass session name to child process so hooks (e.g. agent-heartbeat) know
+	// which session this agent belongs to without scanning YAML files.
+	env := os.Environ()
+	if s, err := session.FindActiveSession(); err == nil {
+		env = append(env, "BAY_SESSION="+s.Name)
+	}
+
+	return syscall.Exec(binaryPath, execArgs, env)
 }

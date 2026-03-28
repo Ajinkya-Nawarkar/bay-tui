@@ -111,36 +111,14 @@ func internalEnsurePane() error {
 	return nil
 }
 
-// internalAgentHeartbeat writes the current timestamp to the agent status file
-// for the session that owns the current tmux pane. Called by the PreToolUse
-// Claude Code hook. Must be near-instant — just a file write, no DB or tmux calls.
+// internalAgentHeartbeat writes the current timestamp to the agent status file.
+// Reads BAY_SESSION env var set by `bay agent` at launch. Called by the
+// PreToolUse Claude Code hook. Near-instant — just reads an env var and writes a file.
 func internalAgentHeartbeat() error {
-	paneID := os.Getenv("TMUX_PANE")
-	if paneID == "" {
-		return nil // Not in tmux
-	}
-
-	// Find which session owns this pane
-	sessions, err := session.List()
-	if err != nil {
-		return nil
-	}
-	var sessionName string
-	for _, s := range sessions {
-		for _, p := range s.Panes {
-			if p.PaneID == paneID {
-				sessionName = s.Name
-				break
-			}
-		}
-		if sessionName != "" {
-			break
-		}
-	}
+	sessionName := os.Getenv("BAY_SESSION")
 	if sessionName == "" {
-		return nil // Pane not tracked by any session
+		return nil // Not launched via bay agent
 	}
-
 	home, _ := os.UserHomeDir()
 	dir := home + "/.bay/agent-status"
 	os.MkdirAll(dir, 0o755)
