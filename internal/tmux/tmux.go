@@ -103,6 +103,16 @@ func ResizeTopbarPane(height int) {
 	run("resize-pane", "-t", TopbarPaneTarget(), "-y", fmt.Sprintf("%d", height))
 }
 
+// HidePaneBorders disables the pane border status line for the current window.
+func HidePaneBorders() {
+	run("set-option", "-w", "pane-border-status", "off")
+}
+
+// RestorePaneBorders re-enables the pane border status line for the current window.
+func RestorePaneBorders() {
+	run("set-option", "-w", "pane-border-status", "top")
+}
+
 // paneExists returns true if the given tmux pane ID is alive in the bay session.
 func paneExists(paneID string) bool {
 	if paneID == "" {
