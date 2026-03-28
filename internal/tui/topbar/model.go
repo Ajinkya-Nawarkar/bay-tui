@@ -1760,11 +1760,12 @@ func (m Model) updateArchive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			clearStatusAfter(2*time.Second),
 		)
 
-	case "B":
+	case "B", "esc":
 		// Cancel — no changes
 		m.mode = modeNormal
 		safeKillWindow(m.archiveWindowIdx, "archive cancel")
 		m.returnTopbarToPrev()
+		m.refresh()
 		m.focused = true
 
 		windowIdx := m.prevWindowIdx
