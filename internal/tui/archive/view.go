@@ -18,11 +18,6 @@ func (m Model) View() string {
 
 	var b strings.Builder
 
-	// Header
-	title := styles.Title.Render("bay archive")
-	count := styles.Subtitle.Render(fmt.Sprintf("%d archived session(s)", len(m.sessions)))
-	b.WriteString("  " + title + "   " + count + "\n")
-
 	// Search bar
 	if m.searching {
 		b.WriteString("\n  " + styles.Prompt.Render("/ ") + m.search.View() + "\n")

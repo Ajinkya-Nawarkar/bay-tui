@@ -385,7 +385,7 @@ func (m Model) renderModalContent(w int, pad string) string {
 			styles.NoteText.Render("`+w") + " " + styles.HelpBar.Render("close") + "  " +
 			styles.NoteText.Render("`+arrows") + " " + styles.HelpBar.Render("nav")
 	case modeArchive:
-		return header + "\n" + pad + styles.Title.Render("bay archive") + "   " +
+		return pad + styles.Title.Render("bay archive") + "   " +
 			styles.Subtitle.Render(fmt.Sprintf("%d archived session(s)", m.archiveCount))
 	case modeCleanup:
 		var items []string
