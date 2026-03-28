@@ -101,13 +101,13 @@ func (m Model) renderCollapsedView(w int) string {
 
 		var rendered string
 		if s.Name == m.activeSession {
-			rendered = num + dot + styles.CollapsedSessionSameRepo.Render("[") +
-				styles.CollapsedSessionActive.Render(label) +
-				styles.CollapsedSessionSameRepo.Render("]") + pulse
+			rendered = num + styles.CollapsedSessionSameRepo.Render("[") +
+				dot + styles.CollapsedSessionActive.Render(label) + pulse +
+				styles.CollapsedSessionSameRepo.Render("]")
 		} else if sameRepo {
-			rendered = num + dot + styles.CollapsedSessionSameRepo.Render("[") +
-				styles.CollapsedSession.Render(label) +
-				styles.CollapsedSessionSameRepo.Render("]") + pulse + age
+			rendered = num + styles.CollapsedSessionSameRepo.Render("[") +
+				dot + styles.CollapsedSession.Render(label) + pulse +
+				styles.CollapsedSessionSameRepo.Render("]") + age
 		} else {
 			rendered = num + dot + styles.CollapsedSession.Render(label) + pulse + age
 		}
@@ -235,8 +235,8 @@ func (m Model) renderExpandedView(w int) string {
 
 			switch {
 			case isSelected:
-				label = constants.NavRight + label + constants.NavLeft
-				sessionItems = append(sessionItems, dot+styles.GridSessionSelected.Render(label)+pulse)
+				label = constants.NavRight + label + pulse + constants.NavLeft
+				sessionItems = append(sessionItems, dot+styles.GridSessionSelected.Render(label))
 			case stale:
 				sessionItems = append(sessionItems, dot+styles.GridSessionStale.Render(label)+pulse)
 			case isActive:
