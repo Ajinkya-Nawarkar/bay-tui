@@ -251,12 +251,38 @@ func (m Model) renderExpandedView(w int) string {
 		sessionRow += strings.Join(sessionItems, "  ")
 	}
 
-	// Row 4: contextual note — only when cursor is on a session with a note
+	// Row 4: info row — note (left) + branch + diff (right), same as collapsed
 	rows := []string{header, repoRow, sessionRow}
 	if m.focused && m.focusRow == 1 && !m.plusSelected {
-		note := m.displayedSessionNote()
-		if note != "" {
-			rows = append(rows, pad+styles.NoteText.Render(note))
+		sessionName := m.selectedSessionName()
+		var noteLeft, branchDiffRight string
+		for _, s := range m.sessions {
+			if s.Name == sessionName {
+				if s.Note != "" {
+					noteLeft = styles.CollapsedNote.Render(s.Note)
+				}
+				if s.WorktreeBranch != "" {
+					branchDiffRight = styles.SessionName.Render("⑃ " + s.WorktreeBranch)
+				}
+				break
+			}
+		}
+		diff := m.renderDiffInline()
+		if diff != "" {
+			if branchDiffRight != "" {
+				branchDiffRight += "  " + diff
+			} else {
+				branchDiffRight = diff
+			}
+		}
+		if noteLeft != "" || branchDiffRight != "" {
+			leftW := lipgloss.Width(pad + noteLeft)
+			rightW := lipgloss.Width(branchDiffRight)
+			gap := w - leftW - rightW - 4
+			if gap < 1 {
+				gap = 1
+			}
+			rows = append(rows, pad+noteLeft+strings.Repeat(" ", gap)+branchDiffRight)
 		}
 	}
 
