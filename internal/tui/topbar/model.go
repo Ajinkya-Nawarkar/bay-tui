@@ -1625,26 +1625,64 @@ func (m Model) archiveSelected() (tea.Model, tea.Cmd) {
 		return m, clearStatusAfter(constants.StatusClearLong)
 	}
 
+	topbarWindow := -1
 	if s.TmuxWindow != 0 && baytmux.WindowExists(s.TmuxWindow) {
-		if target == m.activeSession {
-			safeKillWindow(s.TmuxWindow, fmt.Sprintf("archive %q", target))
-			m.activeSession = ""
-			m.activeWindowIdx = 0
-		} else {
-			safeKillWindow(s.TmuxWindow, fmt.Sprintf("archive %q", target))
-		}
+		topbarWindow = safeKillWindow(s.TmuxWindow, fmt.Sprintf("archive %q", target))
 	}
 
 	session.Archive(target)
+	wasActive := m.activeSession == target
+	if wasActive {
+		m.activeSession = ""
+		m.activeWindowIdx = 0
+	}
 	m.refresh()
 
-	// Adjust cursor if it's past the end
+	// Adjust cursor
 	sessions := m.activeRepoSessions()
 	if m.selectedSessionIdx >= len(sessions) && m.selectedSessionIdx > 0 {
 		m.selectedSessionIdx = len(sessions) - 1
 	}
 	if len(sessions) == 0 {
 		m.focusRow = 0
+	}
+
+	// If we archived the active session, auto-activate the next one (same as delete)
+	if wasActive {
+		nextSessions := m.activeRepoSessions()
+		if len(nextSessions) == 0 {
+			if all, lerr := session.List(); lerr == nil && len(all) > 0 {
+				nextSessions = append(nextSessions, all[0])
+			}
+		}
+		var nextSession *session.Session
+		for _, ns := range nextSessions {
+			if !isSessionStale(ns) {
+				nextSession = ns
+				break
+			}
+		}
+		if nextSession != nil {
+			m2, activateCmd := m.activateSession(nextSession)
+			if tm, ok := m2.(Model); ok {
+				tm.statusMsg = fmt.Sprintf("Archived '%s'", target)
+				return tm, tea.Batch(activateCmd, clearStatusAfter(2*time.Second))
+			}
+			return m2, activateCmd
+		}
+
+		// No sessions left — switch to topbar's standalone window
+		m.statusMsg = fmt.Sprintf("Archived '%s'", target)
+		tw := topbarWindow
+		return m, tea.Batch(
+			func() tea.Msg {
+				if tw >= 0 {
+					baytmux.SelectWindow(tw)
+				}
+				return tea.ClearScreen()
+			},
+			clearStatusAfter(2*time.Second),
+		)
 	}
 
 	m.statusMsg = fmt.Sprintf("Archived '%s'", target)
