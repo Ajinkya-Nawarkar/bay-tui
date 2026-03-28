@@ -53,9 +53,6 @@ func Internal(args []string) error {
 	case "search":
 		return InternalSearch()
 
-	case "status":
-		return InternalStatus()
-
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown internal command: %s\n", args[0])
 		return nil

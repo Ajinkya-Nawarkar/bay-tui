@@ -431,9 +431,6 @@ func (m Model) renderModalContent(w int, pad string) string {
 	case modeSearch:
 		return header + "\n" + pad + styles.HelpBar.Render("Searching sessions...") +
 			"\n" + pad + styles.HelpBar.Render("Close search to return")
-	case modeStatus:
-		return header + "\n" + pad + styles.HelpBar.Render("Status dashboard...") +
-			"\n" + pad + styles.HelpBar.Render("Close dashboard to return")
 	}
 
 	return header
@@ -489,9 +486,6 @@ func (m Model) renderHintBarPlain() string {
 	}
 	if m.mode == modeSearch {
 		return tmuxHint("searching", "close to return")
-	}
-	if m.mode == modeStatus {
-		return tmuxHint("status", "close to return")
 	}
 	if m.mode == modeCleanup {
 		return tmuxHint("space", "toggle") + gap + tmuxHint("a", "all") + gap + tmuxHint("enter", "delete") + gap + tmuxHint("esc", "skip")

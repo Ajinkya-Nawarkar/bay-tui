@@ -126,12 +126,6 @@ func run() (exitCode int) {
 			return 1
 		}
 
-	case "status":
-		if err := cmd.Internal([]string{"status"}); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return 1
-		}
-
 	case "sync-panes":
 		// Legacy alias — routes to bay internal sync-panes
 		if err := cmd.Internal([]string{"sync-panes"}); err != nil {
@@ -181,8 +175,7 @@ Tasks:
   bay task clear             Clear all tasks for the session
 
 Search & Status:
-  bay search         Fuzzy search and switch sessions
-  bay status         Session activity dashboard
+  bay search         Search sessions + activity dashboard
   bay ctx search "query"     Full-text search across all sessions
   bay ctx config             Show/toggle memory features
 

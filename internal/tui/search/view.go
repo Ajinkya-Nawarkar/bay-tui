@@ -9,7 +9,7 @@ import (
 	"bay/internal/tui/styles"
 )
 
-// View renders the search screen.
+// View renders the combined search + status screen.
 func (m Model) View() string {
 	w := m.width
 	if w < 40 {
@@ -21,80 +21,48 @@ func (m Model) View() string {
 	}
 
 	pad := "  "
-	innerW := w - 4 // border + padding
+	innerW := w - 4
 
-	// Header
-	header := pad + styles.Title.Render("search sessions")
+	// Header — title left, summary right (when in grouped mode)
+	headerLeft := pad + styles.Title.Render("sessions")
+	header := headerLeft
+	if !m.IsSearching() && m.summary != "" {
+		summaryRight := m.renderSummaryColored()
+		gap := innerW - lipgloss.Width(headerLeft) - lipgloss.Width(summaryRight)
+		if gap < 2 {
+			gap = 2
+		}
+		header = headerLeft + strings.Repeat(" ", gap) + summaryRight
+	}
 
 	// Input
 	inputRow := pad + "\U0001F50D " + m.input.View()
 
-	// Results
-	maxResults := h - 10 // leave room for header, input, detail, help
-	if maxResults < 3 {
-		maxResults = 3
+	// Body — either grouped sections or flat filtered list
+	maxRows := h - 10
+	if maxRows < 3 {
+		maxRows = 3
 	}
 
-	var resultRows []string
-	if len(m.filtered) == 0 {
-		resultRows = append(resultRows, pad+styles.NoSessions.Render("no matches"))
+	var bodyRows []string
+	if m.IsSearching() {
+		bodyRows = m.renderFilteredList(pad, innerW, maxRows)
 	} else {
-		// Scroll window
-		start := 0
-		if m.cursor >= maxResults {
-			start = m.cursor - maxResults + 1
-		}
-		end := start + maxResults
-		if end > len(m.filtered) {
-			end = len(m.filtered)
-		}
-
-		for i := start; i < end; i++ {
-			e := m.filtered[i]
-			row := m.renderSessionRow(e, i == m.cursor, innerW)
-			resultRows = append(resultRows, pad+row)
-		}
-
-		// Scroll indicator
-		if end < len(m.filtered) {
-			remaining := len(m.filtered) - end
-			resultRows = append(resultRows, pad+styles.HelpBar.Render(fmt.Sprintf("  ... %d more below", remaining)))
-		}
+		bodyRows = m.renderGroupedSections(pad, innerW, maxRows)
 	}
 
-	// Detail panel for selected session
-	var detailRows []string
-	if m.cursor < len(m.filtered) {
-		e := m.filtered[m.cursor]
-		sep := pad + styles.HelpBar.Render(strings.Repeat("─", min(innerW-4, 50)))
-		detailRows = append(detailRows, sep)
-
-		if e.Note != "" {
-			detailRows = append(detailRows, pad+styles.HelpBar.Render("note    ")+styles.CollapsedNote.Render(e.Note))
-		}
-		if e.PaneInfo != "" {
-			detailRows = append(detailRows, pad+styles.HelpBar.Render("panes   ")+styles.SessionName.Render(e.PaneInfo))
-		}
-	}
+	// Detail panel
+	detailRows := m.renderDetailPanel(pad, innerW)
 
 	// Help bar
-	var helpText string
-	if len(m.filtered) == 0 {
-		helpText = "esc back"
-	} else if len(m.filtered) == 1 {
-		helpText = fmt.Sprintf("enter to switch to %s", m.filtered[0].Session.Name)
-	} else {
-		helpText = fmt.Sprintf("%d matches  \u2191\u2193 navigate  enter switch  esc back", len(m.filtered))
-	}
-	helpRow := pad + styles.HelpBar.Render(helpText)
+	helpRow := pad + styles.HelpBar.Render(m.helpText())
 
 	// Assemble
 	lines := []string{header, "", inputRow, ""}
-	lines = append(lines, resultRows...)
+	lines = append(lines, bodyRows...)
 	lines = append(lines, "")
 	lines = append(lines, detailRows...)
 
-	// Pad to fill height, then help at bottom
 	for len(lines) < h-3 {
 		lines = append(lines, "")
 	}
@@ -103,11 +71,102 @@ func (m Model) View() string {
 	return strings.Join(lines, "\n")
 }
 
+func (m Model) renderFilteredList(pad string, innerW, maxRows int) []string {
+	var rows []string
+	if len(m.filtered) == 0 {
+		rows = append(rows, pad+styles.NoSessions.Render("no matches"))
+		return rows
+	}
+
+	start := 0
+	if m.cursor >= maxRows {
+		start = m.cursor - maxRows + 1
+	}
+	end := start + maxRows
+	if end > len(m.filtered) {
+		end = len(m.filtered)
+	}
+
+	for i := start; i < end; i++ {
+		row := m.renderSessionRow(m.filtered[i], i == m.cursor, innerW)
+		rows = append(rows, pad+row)
+	}
+
+	if end < len(m.filtered) {
+		rows = append(rows, pad+styles.HelpBar.Render(fmt.Sprintf("  ... %d more below", len(m.filtered)-end)))
+	}
+	return rows
+}
+
+func (m Model) renderGroupedSections(pad string, innerW, maxRows int) []string {
+	if len(m.sections) == 0 {
+		return []string{pad + styles.NoSessions.Render("no sessions")}
+	}
+
+	var rows []string
+	flatIdx := 0
+	for _, sec := range m.sections {
+		rows = append(rows, pad+styles.Subtitle.Render(sec.Label))
+		for _, e := range sec.Sessions {
+			row := m.renderSessionRow(e, flatIdx == m.cursor, innerW)
+			rows = append(rows, pad+row)
+			flatIdx++
+		}
+		rows = append(rows, "") // gap between sections
+	}
+	return rows
+}
+
+func (m Model) renderDetailPanel(pad string, innerW int) []string {
+	list := m.visibleList()
+	if m.cursor >= len(list) {
+		return nil
+	}
+	e := list[m.cursor]
+
+	var rows []string
+	sep := pad + styles.HelpBar.Render(strings.Repeat("\u2500", min(innerW-4, 50)))
+	rows = append(rows, sep)
+
+	if e.Note != "" {
+		rows = append(rows, pad+styles.HelpBar.Render("note    ")+
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#F97316")).Italic(true).Render(e.Note))
+	}
+	if e.PaneInfo != "" {
+		rows = append(rows, pad+styles.HelpBar.Render("panes   ")+styles.SessionName.Render(e.PaneInfo))
+	}
+
+	// State hint (only in grouped mode)
+	if !m.IsSearching() {
+		hint := stateHint(e)
+		if hint != "" {
+			rows = append(rows, pad+styles.HelpBar.Render("hint    ")+styles.HelpBar.Render(hint))
+		}
+	}
+
+	return rows
+}
+
+func (m Model) helpText() string {
+	list := m.visibleList()
+	if len(list) == 0 {
+		return "esc back"
+	}
+	if m.IsSearching() && len(list) == 1 {
+		return fmt.Sprintf("enter to switch to %s  esc back", list[0].Session.Name)
+	}
+	base := fmt.Sprintf("%d sessions  \u2191\u2193 navigate  enter switch  ctrl+r refresh  esc back", len(list))
+	return base
+}
+
 func (m Model) renderSessionRow(e enrichedSession, selected bool, maxW int) string {
 	cursor := "  "
 	if selected {
 		cursor = styles.GridSessionSelected.Render("\u25b8 ")
 	}
+
+	// Agent indicator
+	agent := agentIndicator(e)
 
 	// repo/name
 	label := e.Session.Repo + "/" + stripRepoPrefix(e.Session.Name, e.Session.Repo)
@@ -123,11 +182,11 @@ func (m Model) renderSessionRow(e enrichedSession, selected bool, maxW int) stri
 		branch = styles.SessionName.Render("\u2443 " + e.Branch)
 	}
 
-	// Agent indicator
-	agent := agentIndicator(e)
-
 	// Time
-	t := e.Session.LastActiveAt
+	t := e.Heartbeat
+	if t.IsZero() {
+		t = e.Session.LastActiveAt
+	}
 	if t.IsZero() {
 		t = e.Session.CreatedAt
 	}
@@ -136,13 +195,9 @@ func (m Model) renderSessionRow(e enrichedSession, selected bool, maxW int) stri
 	// Diff
 	diff := renderDiffCompact(e.Diff)
 
-	// Assemble with spacing
-	parts := []string{cursor + label}
+	parts := []string{cursor + agent + " " + label}
 	if branch != "" {
 		parts = append(parts, branch)
-	}
-	if agent != "" {
-		parts = append(parts, agent)
 	}
 	if age != "" {
 		parts = append(parts, age)
@@ -158,9 +213,9 @@ func agentIndicator(e enrichedSession) string {
 		return styles.HelpBar.Render("\u25c7")
 	}
 	if e.AgentActive {
-		return styles.NoteText.Render("\u25c6 active")
+		return styles.NoteText.Render("\u25c6")
 	}
-	return styles.SuccessText.Render("\u25c6 idle")
+	return styles.SuccessText.Render("\u25c6")
 }
 
 func renderDiffCompact(d diffSummary) string {
@@ -175,9 +230,35 @@ func renderDiffCompact(d diffSummary) string {
 		styles.ErrorText.Render(fmt.Sprintf("-%d", d.Deletions))
 }
 
-var CollapsedNote = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("#F97316")).
-	Italic(true)
+func (m Model) renderSummaryColored() string {
+	active, idle, dormant := 0, 0, 0
+	for _, sec := range m.sections {
+		switch sec.Label {
+		case "ACTIVE":
+			active = len(sec.Sessions)
+		case "IDLE":
+			idle = len(sec.Sessions)
+		case "DORMANT":
+			dormant = len(sec.Sessions)
+		}
+	}
+	parts := []string{
+		styles.NoteText.Render(fmt.Sprintf("%d active", active)),
+		styles.HelpBar.Render(fmt.Sprintf("%d idle", idle)),
+		styles.HelpBar.Render(fmt.Sprintf("%d dormant", dormant)),
+	}
+	return strings.Join(parts, styles.HelpBar.Render(" \u00b7 "))
+}
+
+func stateHint(e enrichedSession) string {
+	switch e.State {
+	case stateActive:
+		return fmt.Sprintf("agent actively working \u2014 last seen %s ago", relativeTime(e.Heartbeat))
+	case stateIdle:
+		return fmt.Sprintf("idle %s \u2014 agent may have finished or is waiting for input", relativeTime(e.Heartbeat))
+	}
+	return ""
+}
 
 func stripRepoPrefix(name, repo string) string {
 	prefix := strings.ToLower(repo) + "-"
