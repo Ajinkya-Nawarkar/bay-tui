@@ -535,12 +535,12 @@ func (m Model) agentPulse(sessionName string) string {
 		}
 	}
 	if !hasAgent {
-		return styles.HelpBar.Render("◇")
+		return " " + styles.HelpBar.Render("◇")
 	}
 	if m.isAgentActive(sessionName) {
-		return styles.ErrorText.Render("◆")
+		return " " + styles.ErrorText.Render("◆")
 	}
-	return styles.SuccessText.Render("◆")
+	return " " + styles.SuccessText.Render("◆")
 }
 
 // stripRepoPrefix removes the "repo-" prefix from a session name for cleaner display.
