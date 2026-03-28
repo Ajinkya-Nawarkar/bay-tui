@@ -4,8 +4,8 @@ import "github.com/charmbracelet/lipgloss"
 
 var (
 	// Colors
-	Primary   = lipgloss.Color("#7C3AED") // purple
-	Secondary = lipgloss.Color("#06B6D4") // cyan
+	Primary   = lipgloss.Color("#06B6D4") // cyan — bay title
+	Secondary = lipgloss.Color("#7C3AED") // purple — repos, brackets
 	Muted     = lipgloss.Color("#6B7280") // gray
 	Success   = lipgloss.Color("#10B981") // green
 	Focus     = lipgloss.Color("#FBBF24") // yellow — focus cursor
@@ -17,10 +17,10 @@ var (
 	// Title
 	Title = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(Secondary)
+		Foreground(Primary)
 
 	Subtitle = lipgloss.NewStyle().
-			Foreground(Primary).
+			Foreground(Secondary).
 			Bold(true)
 
 	// Box for sections
@@ -37,7 +37,7 @@ var (
 	// Tree styles
 	RepoName = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(Primary)
+			Foreground(Secondary)
 
 	SessionName = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#D1D5DB"))
@@ -98,7 +98,7 @@ var (
 		Foreground(Muted)
 
 	RepoTabActive = lipgloss.NewStyle().
-			Foreground(Primary). // purple — currently active repo
+			Foreground(Secondary). // purple — currently active repo
 			Bold(true)
 
 	RepoTabFocused = lipgloss.NewStyle().
@@ -132,7 +132,7 @@ var (
 			Foreground(Muted)
 
 	GridRepoNameActive = lipgloss.NewStyle().
-				Foreground(Primary).
+				Foreground(Secondary).
 				Bold(true)
 
 	GridRepoNameFocused = lipgloss.NewStyle().
@@ -167,13 +167,13 @@ var (
 			Bold(true)
 
 	CollapsedRepo = lipgloss.NewStyle().
-			Foreground(Primary)
+			Foreground(Secondary)
 
 	CollapsedSession = lipgloss.NewStyle().
 				Foreground(Muted)
 
 	CollapsedSessionSameRepo = lipgloss.NewStyle().
-					Foreground(Primary) // purple — same repo as active, matches repo color
+					Foreground(Secondary) // purple — same repo as active, matches repo color
 
 	CollapsedSessionActive = lipgloss.NewStyle().
 				Foreground(Success).
