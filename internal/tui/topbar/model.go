@@ -417,25 +417,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Action == tea.MouseActionPress && !m.focused {
 			m.focused = true
 			m.statusMsg = ""
-			sessions := m.activeRepoSessions()
-			if len(sessions) > 0 {
-				m.focusRow = 1
-				for i, s := range sessions {
+			m.focusRow = 0
+			m.selectedSessionIdx = 0
+			m.plusSelected = false
+			for i := range m.repos {
+				sessions := m.sessionsForRepoIdx(i)
+				for j, s := range sessions {
 					if s.Name == m.activeSession {
-						m.selectedSessionIdx = i
-						break
+						m.focusRow = i
+						m.selectedSessionIdx = j
+						goto mouseFound
 					}
 				}
-			} else {
-				m.focusRow = 0
 			}
+		mouseFound:
+			return m, resizeTopbarCmd(m.gridHeight())
 		}
 		return m, nil
 
 	case tea.BlurMsg:
 		m.focused = false
 		m.statusMsg = ""
-		return m, nil
+		return m, resizeTopbarCmd(constants.TopbarCollapsedHeight)
 
 	case tea.KeyMsg:
 		// Handle modal input modes
