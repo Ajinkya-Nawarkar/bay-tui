@@ -119,7 +119,10 @@ func internalAgentHeartbeat() error {
 	if sessionName == "" {
 		return nil // Not launched via bay agent
 	}
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil
+	}
 	dir := home + "/.bay/agent-status"
 	os.MkdirAll(dir, 0o755)
 	ts := fmt.Sprintf("%d", time.Now().Unix())

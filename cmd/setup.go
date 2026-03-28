@@ -21,8 +21,7 @@ func (w setupWrapper) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return w, tea.Quit
 	}
 	m, cmd := w.inner.Update(msg)
-	w.inner = m
-	return w, cmd
+	return setupWrapper{inner: m}, cmd
 }
 
 // Setup runs the setup wizard standalone.
