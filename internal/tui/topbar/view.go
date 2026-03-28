@@ -524,6 +524,7 @@ func staleTime(t time.Time) string {
 // ◆ green = agent panes exist, all idle
 // ◆ red = agent panes exist, at least one actively working
 func (m Model) agentPulse(sessionName string) string {
+	// Check YAML pane data OR heartbeat file — either means agents exist
 	hasAgent := false
 	for _, s := range m.sessions {
 		if s.Name == sessionName {
@@ -534,6 +535,12 @@ func (m Model) agentPulse(sessionName string) string {
 				}
 			}
 			break
+		}
+	}
+	// Heartbeat file existence also indicates an agent (YAML may lag behind)
+	if !hasAgent {
+		if _, ok := m.agentActive[sessionName]; ok {
+			hasAgent = true
 		}
 	}
 	if !hasAgent {
