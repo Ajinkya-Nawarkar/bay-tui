@@ -279,20 +279,6 @@ func (m *Model) sessionsForRepoIdx(repoIdx int) []*session.Session {
 	return result
 }
 
-// focusedRepoSessions returns sessions for the repo the cursor is on.
-func (m *Model) focusedRepoSessions() []*session.Session {
-	return m.sessionsForRepoIdx(m.focusRow)
-}
-
-// focusedSessionNote returns the note for the session under the cursor, if any.
-func (m *Model) focusedSessionNote() string {
-	sessions := m.focusedRepoSessions()
-	if m.selectedSessionIdx >= len(sessions) {
-		return ""
-	}
-	return sessions[m.selectedSessionIdx].Note
-}
-
 // maxRepoNameWidth returns the length of the longest repo name (for column alignment).
 func (m *Model) maxRepoNameWidth() int {
 	max := 0
@@ -306,16 +292,13 @@ func (m *Model) maxRepoNameWidth() int {
 
 // gridHeight returns the number of lines for the expanded topbar pane.
 func (m *Model) gridHeight() int {
-	// header + repos + plus row + 2 border lines
-	h := 1 + len(m.repos) + 1 + 2
+	// header + repo row + session row + 2 border lines
+	h := 3 + 2
 	// +1 for contextual note if cursor is on a session with a note
-	if m.focused && !m.plusSelected {
-		if m.focusedSessionNote() != "" {
+	if m.focused && m.focusRow == 1 {
+		if m.displayedSessionNote() != "" {
 			h++
 		}
-	}
-	if h > constants.TopbarMaxGridHeight {
-		h = constants.TopbarMaxGridHeight
 	}
 	return h
 }
@@ -340,8 +323,8 @@ func isSessionStale(s *session.Session) bool {
 // selectedSessionName returns the selected session name when focused on the sessions row,
 // otherwise the active session name.
 func (m *Model) selectedSessionName() string {
-	if m.focused && !m.plusSelected {
-		sessions := m.focusedRepoSessions()
+	if m.focused && m.focusRow == 1 {
+		sessions := m.activeRepoSessions()
 		if m.selectedSessionIdx < len(sessions) {
 			return sessions[m.selectedSessionIdx].Name
 		}
@@ -436,20 +419,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Action == tea.MouseActionPress && !m.focused {
 			m.focused = true
 			m.statusMsg = ""
-			m.focusRow = 0
-			m.selectedSessionIdx = 0
 			m.plusSelected = false
-			for i := range m.repos {
-				sessions := m.sessionsForRepoIdx(i)
-				for j, s := range sessions {
+			m.focusRow = 1
+			m.selectedSessionIdx = 0
+			for i, r := range m.repos {
+				for j, s := range m.sessionsForRepoIdx(i) {
 					if s.Name == m.activeSession {
-						m.focusRow = i
+						m.activeRepoIdx = i
 						m.selectedSessionIdx = j
-						goto mouseFound
+						break
 					}
 				}
+				_ = r
 			}
-		mouseFound:
+			if len(m.activeRepoSessions()) == 0 {
+				m.focusRow = 0
+			}
 			return m, resizeTopbarCmd(m.gridHeight())
 		}
 		return m, nil
@@ -500,22 +485,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.focused = true
 			m.statusMsg = ""
-			// Position cursor on the repo/session that is currently active
-			m.focusRow = 0
-			m.selectedSessionIdx = 0
 			m.plusSelected = false
+			// Default to session row with active session selected
+			m.focusRow = 1
+			m.selectedSessionIdx = 0
 			for i, r := range m.repos {
-				sessions := m.sessionsForRepoIdx(i)
-				for j, s := range sessions {
+				for j, s := range m.sessionsForRepoIdx(i) {
 					if s.Name == m.activeSession {
-						m.focusRow = i
+						m.activeRepoIdx = i
 						m.selectedSessionIdx = j
-						goto found
+						break
 					}
 				}
 				_ = r
 			}
-		found:
+			// Fall back to repo row if no sessions
+			if len(m.activeRepoSessions()) == 0 {
+				m.focusRow = 0
+			}
 			return m, resizeTopbarCmd(m.gridHeight())
 		}
 
@@ -555,55 +542,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = ""
 			return m, tea.Batch(unfocusCmd, resizeTopbarCmd(constants.TopbarCollapsedHeight))
 		case "down":
-			if m.plusSelected {
-				return m, nil // already at bottom
-			}
-			if m.focusRow < len(m.repos)-1 {
-				m.focusRow++
-				m.selectedSessionIdx = 0
-			} else {
-				m.plusSelected = true
+			if m.focusRow == 0 && !m.plusSelected {
+				if len(m.activeRepoSessions()) > 0 {
+					m.focusRow = 1
+					m.selectedSessionIdx = 0
+				}
 			}
 			return m, resizeTopbarCmd(m.gridHeight())
 		case "up":
-			if m.plusSelected {
-				m.plusSelected = false
-				if len(m.repos) > 0 {
-					m.focusRow = len(m.repos) - 1
-				}
-				m.selectedSessionIdx = 0
-				return m, resizeTopbarCmd(m.gridHeight())
-			}
-			if m.focusRow > 0 {
-				m.focusRow--
-				m.selectedSessionIdx = 0
+			if m.focusRow == 1 {
+				m.focusRow = 0
 			}
 			return m, resizeTopbarCmd(m.gridHeight())
 		case "left", "h":
+			if m.focusRow == 0 {
+				return m.cycleRepoFocused(-1)
+			}
 			return m.cycleSelectedSession(-1)
 		case "right", "l":
+			if m.focusRow == 0 {
+				return m.cycleRepoFocused(1)
+			}
 			return m.cycleSelectedSession(1)
 		case "enter":
 			if m.plusSelected {
 				return m.startCreate("")
+			}
+			if m.focusRow == 0 {
+				// Enter on repo row: move to session row
+				if len(m.activeRepoSessions()) > 0 {
+					m.focusRow = 1
+					m.selectedSessionIdx = 0
+				}
+				return m, nil
 			}
 			return m.activateSelectedSession()
 		case "n":
 			if m.plusSelected {
 				return m.startCreate("")
 			}
-			// Create session for the focused repo
-			repoName := m.focusedRepoName()
+			repoName := m.activeRepoName()
 			if repoName == "" {
 				return m.startCreate("")
 			}
-			if len(m.focusedRepoSessions()) >= constants.MaxSessionsPerRepo {
+			if len(m.activeRepoSessions()) >= constants.MaxSessionsPerRepo {
 				m.statusMsg = fmt.Sprintf("Max %d sessions per repo", constants.MaxSessionsPerRepo)
 				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m.startCreate(repoName)
 		case "m":
-			if m.plusSelected || len(m.focusedRepoSessions()) == 0 {
+			if m.focusRow != 1 || len(m.activeRepoSessions()) == 0 {
 				m.statusMsg = "Select a session first"
 				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
@@ -614,19 +602,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, func() tea.Msg { return SwitchToMemoryMsg{SessionName: sessionName} }
 		case "d":
-			if m.plusSelected || len(m.focusedRepoSessions()) == 0 {
+			if m.focusRow != 1 || len(m.activeRepoSessions()) == 0 {
 				m.statusMsg = "Select a session first"
 				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m.startDelete()
 		case "R":
-			if m.plusSelected || len(m.focusedRepoSessions()) == 0 {
+			if m.focusRow != 1 || len(m.activeRepoSessions()) == 0 {
 				m.statusMsg = "Select a session first"
 				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m.startRename()
 		case "N":
-			if m.plusSelected || len(m.focusedRepoSessions()) == 0 {
+			if m.focusRow != 1 || len(m.activeRepoSessions()) == 0 {
 				m.statusMsg = "Select a session first"
 				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
@@ -655,14 +643,6 @@ func resizeTopbarCmd(height int) tea.Cmd {
 		baytmux.ResizeTopbarPane(height)
 		return nil
 	}
-}
-
-// focusedRepoName returns the name of the repo the cursor is on.
-func (m *Model) focusedRepoName() string {
-	if m.focusRow < 0 || m.focusRow >= len(m.repos) {
-		return ""
-	}
-	return m.repos[m.focusRow].Name
 }
 
 // safeKillWindow breaks the topbar out of a window, then kills it.
@@ -726,7 +706,7 @@ func (m Model) jumpToSession(idx int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) cycleSelectedSession(dir int) (tea.Model, tea.Cmd) {
-	sessions := m.focusedRepoSessions()
+	sessions := m.activeRepoSessions()
 	if len(sessions) == 0 {
 		return m, nil
 	}
@@ -734,8 +714,32 @@ func (m Model) cycleSelectedSession(dir int) (tea.Model, tea.Cmd) {
 	return m, resizeTopbarCmd(m.gridHeight())
 }
 
+// cycleRepoFocused navigates between repos on the repo row.
+func (m Model) cycleRepoFocused(dir int) (tea.Model, tea.Cmd) {
+	if m.plusSelected {
+		if dir < 0 && len(m.repos) > 0 {
+			m.plusSelected = false
+			m.activeRepoIdx = len(m.repos) - 1
+		} else if dir > 0 && len(m.repos) > 0 {
+			m.plusSelected = false
+			m.activeRepoIdx = 0
+		}
+	} else {
+		next := m.activeRepoIdx + dir
+		if next < 0 {
+			m.plusSelected = true
+		} else if next >= len(m.repos) {
+			m.plusSelected = true
+		} else {
+			m.activeRepoIdx = next
+		}
+	}
+	m.selectedSessionIdx = 0
+	return m, nil
+}
+
 func (m Model) activateSelectedSession() (tea.Model, tea.Cmd) {
-	sessions := m.focusedRepoSessions()
+	sessions := m.activeRepoSessions()
 	if len(sessions) == 0 {
 		return m, nil
 	}

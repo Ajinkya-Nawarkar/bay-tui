@@ -167,16 +167,17 @@ func (m Model) renderCollapsedView(w int) string {
 	return row1 + "\n" + row2 + "\n" + row3
 }
 
-// renderExpandedView renders the full grid for focused/modal modes.
+// renderExpandedView renders the horizontal expanded view for focused/modal modes.
+// Row 1: header + diff. Row 2: repo tabs. Row 3: sessions for selected repo. Row 4: note.
 func (m Model) renderExpandedView(w int) string {
 	pad := "  "
 
-	// Handle modal modes — they replace the grid body
+	// Handle modal modes — they replace the body
 	if m.mode != modeNormal {
 		return m.renderModalContent(w, pad)
 	}
 
-	// Header row: "bay" title + diff (right-aligned)
+	// Row 1: header + diff (right-aligned)
 	left := styles.CollapsedTitle.Render("bay")
 	diff := m.renderDiffInline()
 	gap := w - lipgloss.Width(pad+left) - lipgloss.Width(diff) - 4
@@ -185,19 +186,11 @@ func (m Model) renderExpandedView(w int) string {
 	}
 	header := pad + left + strings.Repeat(" ", gap) + diff
 
-	// Repo rows
-	var rows []string
-	rows = append(rows, header)
-
-	repoColWidth := m.maxRepoNameWidth() + 2 // +2 for padding
-	if repoColWidth < 8 {
-		repoColWidth = 8
-	}
-
+	// Row 2: horizontal repo tabs
+	var repoTabs []string
 	for i, repo := range m.repos {
-		isFocusedRow := m.focused && m.focusRow == i && !m.plusSelected
+		isSelected := m.focused && m.focusRow == 0 && i == m.activeRepoIdx && !m.plusSelected
 		isActiveRepo := false
-		// Check if this repo contains the active session
 		for _, s := range m.sessions {
 			if s.Repo == repo.Name && s.Name == m.activeSession {
 				isActiveRepo = true
@@ -205,65 +198,63 @@ func (m Model) renderExpandedView(w int) string {
 			}
 		}
 
-		// Repo name column
-		indicator := " "
-		if isActiveRepo {
-			indicator = "▸"
-		}
-		repoLabel := indicator + repo.Name
-		repoLabel = truncate(repoLabel, repoColWidth)
-		repoLabel = padRight(repoLabel, repoColWidth)
-
-		var repoStyle lipgloss.Style
+		label := repo.Name
 		switch {
-		case isFocusedRow:
-			repoStyle = styles.GridRepoNameFocused
+		case isSelected:
+			label = constants.NavRight + label + constants.NavLeft
+			repoTabs = append(repoTabs, styles.GridRepoNameFocused.Render(label))
 		case isActiveRepo:
-			repoStyle = styles.GridRepoNameActive
+			repoTabs = append(repoTabs, styles.GridRepoNameActive.Render("▸"+label))
 		default:
-			repoStyle = styles.GridRepoName
+			repoTabs = append(repoTabs, styles.GridRepoName.Render(label))
 		}
-
-		// Session items for this repo
-		sessions := m.sessionsForRepoIdx(i)
-		var sessionItems []string
-		for j, s := range sessions {
-			label := stripRepoPrefix(s.Name, repo.Name)
-			stale := isSessionStale(s)
-			isActive := s.Name == m.activeSession
-			isSelected := isFocusedRow && j == m.selectedSessionIdx
-			dot := m.diffDot(s.Name)
-			pulse := m.agentPulse(s.Name)
-
-			switch {
-			case isSelected:
-				label = constants.NavRight + label + pulse + constants.NavLeft
-				sessionItems = append(sessionItems, dot+styles.GridSessionSelected.Render(label))
-			case stale:
-				sessionItems = append(sessionItems, dot+styles.GridSessionStale.Render(label)+pulse)
-			case isActive:
-				sessionItems = append(sessionItems, dot+styles.GridSessionActive.Render(label)+pulse)
-			default:
-				sessionItems = append(sessionItems, dot+styles.GridSessionItem.Render(label)+pulse)
-			}
-		}
-
-		row := pad + repoStyle.Render(repoLabel) + "  " + strings.Join(sessionItems, "  ")
-		rows = append(rows, row)
 	}
-
-	// ＋ new row
-	plusLabel := "＋ new"
+	// ＋ button on repo row
 	if m.focused && m.plusSelected {
-		plusLabel = constants.NavRight + "＋ new" + constants.NavLeft
-		rows = append(rows, pad+padRight(" ", repoColWidth)+"  "+styles.GridPlusFocused.Render(plusLabel))
+		repoTabs = append(repoTabs, styles.GridPlusFocused.Render(constants.NavRight+"＋"+constants.NavLeft))
 	} else {
-		rows = append(rows, pad+padRight(" ", repoColWidth)+"  "+styles.GridPlus.Render(plusLabel))
+		repoTabs = append(repoTabs, styles.GridPlus.Render("＋"))
+	}
+	repoRow := pad + strings.Join(repoTabs, "  ")
+
+	// Row 3: sessions for the selected repo
+	sessions := m.activeRepoSessions()
+	var sessionItems []string
+	repoName := ""
+	if m.activeRepoIdx < len(m.repos) {
+		repoName = m.repos[m.activeRepoIdx].Name
+	}
+	for j, s := range sessions {
+		label := stripRepoPrefix(s.Name, repoName)
+		stale := isSessionStale(s)
+		isActive := s.Name == m.activeSession
+		isSelected := m.focused && m.focusRow == 1 && j == m.selectedSessionIdx
+		dot := m.diffDot(s.Name)
+		pulse := m.agentPulse(s.Name)
+
+		switch {
+		case isSelected:
+			label = constants.NavRight + label + pulse + constants.NavLeft
+			sessionItems = append(sessionItems, dot+styles.GridSessionSelected.Render(label))
+		case stale:
+			sessionItems = append(sessionItems, dot+styles.GridSessionStale.Render(label)+pulse)
+		case isActive:
+			sessionItems = append(sessionItems, dot+styles.GridSessionActive.Render(label)+pulse)
+		default:
+			sessionItems = append(sessionItems, dot+styles.GridSessionItem.Render(label)+pulse)
+		}
+	}
+	sessionRow := pad
+	if len(sessionItems) == 0 {
+		sessionRow += styles.NoSessions.Render("no sessions — n to create")
+	} else {
+		sessionRow += strings.Join(sessionItems, "  ")
 	}
 
-	// Contextual note row — only when cursor is on a session with a note
-	if m.focused && !m.plusSelected {
-		note := m.focusedSessionNote()
+	// Row 4: contextual note — only when cursor is on a session with a note
+	rows := []string{header, repoRow, sessionRow}
+	if m.focused && m.focusRow == 1 && !m.plusSelected {
+		note := m.displayedSessionNote()
 		if note != "" {
 			rows = append(rows, pad+styles.NoteText.Render(note))
 		}
