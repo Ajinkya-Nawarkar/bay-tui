@@ -96,15 +96,18 @@ func (m Model) renderCollapsedView(w int) string {
 		label := stripRepoPrefix(s.Name, s.Repo)
 		sameRepo := s.Repo == activeRepo
 
+		dot := m.diffDot(s.Name)
+		age := staleTime(s.LastActiveAt)
+
 		var rendered string
 		if s.Name == m.activeSession {
-			rendered = styles.CollapsedSessionSameRepo.Render("[") +
+			rendered = dot + styles.CollapsedSessionSameRepo.Render("[") +
 				styles.CollapsedSessionActive.Render(label) +
 				styles.CollapsedSessionSameRepo.Render("]")
 		} else if sameRepo {
-			rendered = styles.CollapsedSessionSameRepo.Render("[" + label + "]")
+			rendered = dot + styles.CollapsedSessionSameRepo.Render("["+label+"]") + age
 		} else {
-			rendered = styles.CollapsedSession.Render(label)
+			rendered = dot + styles.CollapsedSession.Render(label) + age
 		}
 
 		labelW := lipgloss.Width(rendered) + 2 // +2 for spacing
@@ -190,17 +193,18 @@ func (m Model) renderExpandedView(w int) string {
 			stale := isSessionStale(s)
 			isActive := s.Name == m.activeSession
 			isSelected := isFocusedRow && j == m.selectedSessionIdx
+			dot := m.diffDot(s.Name)
 
 			switch {
 			case isSelected:
 				label = constants.NavRight + label + constants.NavLeft
-				sessionItems = append(sessionItems, styles.GridSessionSelected.Render(label))
+				sessionItems = append(sessionItems, dot+styles.GridSessionSelected.Render(label))
 			case stale:
-				sessionItems = append(sessionItems, styles.GridSessionStale.Render(label))
+				sessionItems = append(sessionItems, dot+styles.GridSessionStale.Render(label))
 			case isActive:
-				sessionItems = append(sessionItems, styles.GridSessionActive.Render(label))
+				sessionItems = append(sessionItems, dot+styles.GridSessionActive.Render(label))
 			default:
-				sessionItems = append(sessionItems, styles.GridSessionItem.Render(label))
+				sessionItems = append(sessionItems, dot+styles.GridSessionItem.Render(label))
 			}
 		}
 
@@ -436,6 +440,43 @@ func relativeTime(t time.Time) string {
 // tmuxHint formats a key+description pair with tmux color codes.
 func tmuxHint(key, desc string) string {
 	return "#[fg=#FBBF24,bold]" + key + " #[fg=#9CA3AF,nobold]" + desc
+}
+
+// staleTimeThreshold is the minimum age before showing a relative time indicator.
+const staleTimeThreshold = 24 * time.Hour
+
+// diffDot returns a colored dot indicating git status for a session.
+// Green dot = clean, orange dot = dirty, empty = no data.
+func (m Model) diffDot(sessionName string) string {
+	cached := m.diffCache[sessionName]
+	if cached == nil {
+		return ""
+	}
+	if cached.Clean {
+		return styles.SuccessText.Render("·")
+	}
+	return styles.NoteText.Render("·")
+}
+
+// staleTime returns a dim relative time string if the session is older than the threshold.
+func staleTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	d := time.Since(t)
+	if d < staleTimeThreshold {
+		return ""
+	}
+	var label string
+	switch {
+	case d < 48*time.Hour:
+		label = "1d"
+	case d < 7*24*time.Hour:
+		label = fmt.Sprintf("%dd", int(d.Hours()/24))
+	default:
+		label = fmt.Sprintf("%dw", int(d.Hours()/(24*7)))
+	}
+	return " " + styles.HelpBar.Render(label)
 }
 
 // stripRepoPrefix removes the "repo-" prefix from a session name for cleaner display.
