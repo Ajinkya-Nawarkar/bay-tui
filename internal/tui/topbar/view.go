@@ -109,7 +109,9 @@ func (m Model) renderCollapsedView(w int) string {
 				dot + styles.CollapsedSession.Render(label) + pulse +
 				styles.CollapsedSessionSameRepo.Render("]") + age
 		} else {
-			rendered = num + dot + styles.CollapsedSession.Render(label) + pulse + age
+			rendered = num + styles.CollapsedSession.Render("[") +
+				dot + styles.CollapsedSession.Render(label) + pulse +
+				styles.CollapsedSession.Render("]") + age
 		}
 
 		labelW := lipgloss.Width(rendered) + 2 // +2 for spacing
