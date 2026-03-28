@@ -97,18 +97,19 @@ func (m Model) renderCollapsedView(w int) string {
 
 		dot := m.diffDot(s.Name)
 		age := staleTime(s.LastActiveAt)
+		pulse := m.agentPulse(s.Name)
 
 		var rendered string
 		if s.Name == m.activeSession {
 			rendered = num + dot + styles.CollapsedSessionSameRepo.Render("[") +
 				styles.CollapsedSessionActive.Render(label) +
-				styles.CollapsedSessionSameRepo.Render("]")
+				styles.CollapsedSessionSameRepo.Render("]") + pulse
 		} else if sameRepo {
 			rendered = num + dot + styles.CollapsedSessionSameRepo.Render("[") +
 				styles.CollapsedSession.Render(label) +
-				styles.CollapsedSessionSameRepo.Render("]") + age
+				styles.CollapsedSessionSameRepo.Render("]") + pulse + age
 		} else {
-			rendered = num + dot + styles.CollapsedSession.Render(label) + age
+			rendered = num + dot + styles.CollapsedSession.Render(label) + pulse + age
 		}
 
 		labelW := lipgloss.Width(rendered) + 2 // +2 for spacing
@@ -230,17 +231,18 @@ func (m Model) renderExpandedView(w int) string {
 			isActive := s.Name == m.activeSession
 			isSelected := isFocusedRow && j == m.selectedSessionIdx
 			dot := m.diffDot(s.Name)
+			pulse := m.agentPulse(s.Name)
 
 			switch {
 			case isSelected:
 				label = constants.NavRight + label + constants.NavLeft
-				sessionItems = append(sessionItems, dot+styles.GridSessionSelected.Render(label))
+				sessionItems = append(sessionItems, dot+styles.GridSessionSelected.Render(label)+pulse)
 			case stale:
-				sessionItems = append(sessionItems, dot+styles.GridSessionStale.Render(label))
+				sessionItems = append(sessionItems, dot+styles.GridSessionStale.Render(label)+pulse)
 			case isActive:
-				sessionItems = append(sessionItems, dot+styles.GridSessionActive.Render(label))
+				sessionItems = append(sessionItems, dot+styles.GridSessionActive.Render(label)+pulse)
 			default:
-				sessionItems = append(sessionItems, dot+styles.GridSessionItem.Render(label))
+				sessionItems = append(sessionItems, dot+styles.GridSessionItem.Render(label)+pulse)
 			}
 		}
 
@@ -513,6 +515,32 @@ func staleTime(t time.Time) string {
 		label = fmt.Sprintf("%dw", int(d.Hours()/(24*7)))
 	}
 	return " " + styles.HelpBar.Render(label)
+}
+
+// agentPulse returns a diamond indicator for agent status.
+// ◇ hollow (dim) = no agent panes
+// ◆ green = agent panes exist, all idle
+// ◆ red = agent panes exist, at least one actively working
+func (m Model) agentPulse(sessionName string) string {
+	hasAgent := false
+	for _, s := range m.sessions {
+		if s.Name == sessionName {
+			for _, p := range s.Panes {
+				if p.Type == "agent" {
+					hasAgent = true
+					break
+				}
+			}
+			break
+		}
+	}
+	if !hasAgent {
+		return styles.HelpBar.Render("◇")
+	}
+	if m.isAgentActive(sessionName) {
+		return styles.ErrorText.Render("◆")
+	}
+	return styles.SuccessText.Render("◆")
 }
 
 // stripRepoPrefix removes the "repo-" prefix from a session name for cleaner display.

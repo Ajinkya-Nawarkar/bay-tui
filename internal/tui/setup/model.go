@@ -179,6 +179,43 @@ func ensureClaudeHook() {
 		hooks["SessionStart"] = []any{bayHook}
 	}
 
+	// Add PreToolUse heartbeat hook for agent activity detection
+	heartbeatCmd := filepath.Join(installDir(), "bay") + " internal agent-heartbeat"
+	hasHeartbeat := false
+	if existing, ok := hooks["PreToolUse"]; ok {
+		if arr, ok := existing.([]any); ok {
+			for _, item := range arr {
+				if m, ok := item.(map[string]any); ok {
+					if innerHooks, ok := m["hooks"].([]any); ok {
+						for _, h := range innerHooks {
+							if hm, ok := h.(map[string]any); ok {
+								if cmd, _ := hm["command"].(string); strings.HasSuffix(cmd, "agent-heartbeat") {
+									hasHeartbeat = true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if !hasHeartbeat {
+		heartbeatHook := map[string]any{
+			"matcher": "",
+			"hooks": []any{
+				map[string]any{
+					"type":    "command",
+					"command": heartbeatCmd,
+				},
+			},
+		}
+		if existing, ok := hooks["PreToolUse"].([]any); ok {
+			hooks["PreToolUse"] = append(existing, heartbeatHook)
+		} else {
+			hooks["PreToolUse"] = []any{heartbeatHook}
+		}
+	}
+
 	settings["hooks"] = hooks
 
 	// Write back

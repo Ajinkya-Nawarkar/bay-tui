@@ -89,6 +89,10 @@ const (
 // before the hot row is reordered. Prevents rapid Tab cycling from reshuffling.
 const HotRowReorderThreshold = 10 * time.Second
 
+// AgentActiveThreshold is how long after the last heartbeat an agent is
+// still considered active. Keeps the ⚡ indicator on between tool calls.
+const AgentActiveThreshold = 10 * time.Second
+
 // --- Status message durations ---
 
 const (

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -53,6 +54,12 @@ type diffSummary struct {
 type diffResultMsg struct {
 	SessionName string
 	Summary     diffSummary
+}
+
+// agentStatusMsg carries polled agent heartbeat data.
+type agentStatusMsg struct {
+	// session name → last heartbeat time (zero if no heartbeat file)
+	heartbeats map[string]time.Time
 }
 
 func clearStatusAfter(d time.Duration) tea.Cmd {
@@ -112,6 +119,9 @@ type Model struct {
 
 	// Diff summary cache: session name → diff summary
 	diffCache map[string]*diffSummary
+
+	// Agent activity: session name → last heartbeat time
+	agentActive map[string]time.Time
 }
 
 // New creates a new topbar model.
@@ -151,6 +161,7 @@ func newModel(cfg *config.Config) Model {
 		noteInput:   ni,
 		switchInput: si,
 		diffCache:   make(map[string]*diffSummary),
+		agentActive: make(map[string]time.Time),
 	}
 }
 
@@ -387,6 +398,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diffCache[msg.SessionName] = &msg.Summary
 		return m, nil
 
+	case agentStatusMsg:
+		for name, t := range msg.heartbeats {
+			m.agentActive[name] = t
+		}
+		return m, nil
+
 	case diffTickMsg:
 		// Refresh diff for the currently displayed session
 		cmds := []tea.Cmd{tea.Tick(constants.DiffTickInterval, func(time.Time) tea.Msg { return diffTickMsg{} })}
@@ -402,6 +419,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		// Poll agent heartbeat files
+		cmds = append(cmds, pollAgentStatusCmd())
 		return m, tea.Batch(cmds...)
 
 	case clearStatusMsg:
@@ -1610,6 +1629,43 @@ func parseShortstat(output string) (files, ins, del int) {
 		del, _ = strconv.Atoi(m[1])
 	}
 	return
+}
+
+// pollAgentStatusCmd reads all agent heartbeat files from ~/.bay/agent-status/.
+func pollAgentStatusCmd() tea.Cmd {
+	return func() tea.Msg {
+		home, _ := os.UserHomeDir()
+		dir := filepath.Join(home, ".bay", "agent-status")
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return agentStatusMsg{heartbeats: nil}
+		}
+		heartbeats := make(map[string]time.Time)
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			if err != nil {
+				continue
+			}
+			ts, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+			if err != nil {
+				continue
+			}
+			heartbeats[e.Name()] = time.Unix(ts, 0)
+		}
+		return agentStatusMsg{heartbeats: heartbeats}
+	}
+}
+
+// isAgentActive returns true if the session has had a heartbeat within the threshold.
+func (m *Model) isAgentActive(sessionName string) bool {
+	t, ok := m.agentActive[sessionName]
+	if !ok {
+		return false
+	}
+	return time.Since(t) < constants.AgentActiveThreshold
 }
 
 // IsFocused returns whether the topbar is in focused mode.
