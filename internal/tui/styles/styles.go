@@ -17,10 +17,10 @@ var (
 	// Title
 	Title = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(Primary)
+		Foreground(Secondary)
 
 	Subtitle = lipgloss.NewStyle().
-			Foreground(Secondary).
+			Foreground(Primary).
 			Bold(true)
 
 	// Box for sections
@@ -37,7 +37,7 @@ var (
 	// Tree styles
 	RepoName = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(Secondary)
+			Foreground(Primary)
 
 	SessionName = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#D1D5DB"))
@@ -98,7 +98,7 @@ var (
 		Foreground(Muted)
 
 	RepoTabActive = lipgloss.NewStyle().
-			Foreground(Secondary). // cyan — currently active repo
+			Foreground(Primary). // purple — currently active repo
 			Bold(true)
 
 	RepoTabFocused = lipgloss.NewStyle().
@@ -132,7 +132,7 @@ var (
 			Foreground(Muted)
 
 	GridRepoNameActive = lipgloss.NewStyle().
-				Foreground(Secondary).
+				Foreground(Primary).
 				Bold(true)
 
 	GridRepoNameFocused = lipgloss.NewStyle().
@@ -167,13 +167,13 @@ var (
 			Bold(true)
 
 	CollapsedRepo = lipgloss.NewStyle().
-			Foreground(Secondary)
+			Foreground(Primary)
 
 	CollapsedSession = lipgloss.NewStyle().
 				Foreground(Muted)
 
 	CollapsedSessionSameRepo = lipgloss.NewStyle().
-					Foreground(Secondary) // cyan — same repo as active, matches repo color
+					Foreground(Primary) // purple — same repo as active, matches repo color
 
 	CollapsedSessionActive = lipgloss.NewStyle().
 				Foreground(Success).
