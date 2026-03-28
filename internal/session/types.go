@@ -23,7 +23,13 @@ type Session struct {
 	WorktreeBranch string    `yaml:"worktree_branch,omitempty"`
 	CreatedAt      time.Time `yaml:"created_at"`
 	LastActiveAt   time.Time `yaml:"last_active_at,omitempty"`
+	ArchivedAt     time.Time `yaml:"archived_at,omitempty"`
 	TmuxWindow     int       `yaml:"tmux_window,omitempty"`
 	Panes          []Pane    `yaml:"panes"`
 	Note           string    `yaml:"note,omitempty"`
+}
+
+// IsArchived returns true if the session has been archived.
+func (s *Session) IsArchived() bool {
+	return !s.ArchivedAt.IsZero()
 }

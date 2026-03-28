@@ -8,7 +8,9 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"bay/internal/config"
 	"gopkg.in/yaml.v3"
@@ -46,7 +48,7 @@ func Delete(name string) error {
 	return os.Remove(sessionPath(name))
 }
 
-// List returns all saved sessions.
+// List returns all saved sessions, excluding archived ones.
 func List() ([]*Session, error) {
 	dir := config.SessionsDir()
 	entries, err := os.ReadDir(dir)
@@ -66,9 +68,64 @@ func List() ([]*Session, error) {
 		if err != nil {
 			continue
 		}
+		if s.IsArchived() {
+			continue
+		}
 		sessions = append(sessions, s)
 	}
 	return sessions, nil
+}
+
+// ListArchived returns only archived sessions, sorted by ArchivedAt descending.
+func ListArchived() ([]*Session, error) {
+	dir := config.SessionsDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var sessions []*Session
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".yaml")
+		s, err := Load(name)
+		if err != nil {
+			continue
+		}
+		if !s.IsArchived() {
+			continue
+		}
+		sessions = append(sessions, s)
+	}
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].ArchivedAt.After(sessions[j].ArchivedAt)
+	})
+	return sessions, nil
+}
+
+// Archive marks a session as archived.
+func Archive(name string) error {
+	s, err := Load(name)
+	if err != nil {
+		return err
+	}
+	s.ArchivedAt = time.Now()
+	s.TmuxWindow = 0
+	return Save(s)
+}
+
+// Unarchive restores an archived session.
+func Unarchive(name string) error {
+	s, err := Load(name)
+	if err != nil {
+		return err
+	}
+	s.ArchivedAt = time.Time{}
+	return Save(s)
 }
 
 // Rename changes a session's name and moves its YAML file.

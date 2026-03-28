@@ -19,6 +19,7 @@ type keyMap struct {
 	Delete key.Binding
 	Rename key.Binding
 	Note         key.Binding
+	Archive      key.Binding
 	Settings     key.Binding
 	GlobalSearch key.Binding
 	Help         key.Binding
@@ -78,6 +79,10 @@ var keys = keyMap{
 	Note: key.NewBinding(
 		key.WithKeys("N"),
 		key.WithHelp("N", "edit note"),
+	),
+	Archive: key.NewBinding(
+		key.WithKeys("A"),
+		key.WithHelp("A", "archived sessions"),
 	),
 	Settings: key.NewBinding(
 		key.WithKeys("S"),

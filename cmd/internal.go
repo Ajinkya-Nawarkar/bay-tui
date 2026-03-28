@@ -44,6 +44,9 @@ func Internal(args []string) error {
 	case "create":
 		return InternalCreate(args[1:])
 
+	case "archive":
+		return InternalArchive()
+
 	case "agent-heartbeat":
 		return internalAgentHeartbeat()
 

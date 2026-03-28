@@ -66,6 +66,11 @@ const (
 	DiffTickInterval = 2 * time.Second
 )
 
+// --- Tips ---
+
+// TipRotateInterval is how often the topbar usage tip rotates.
+const TipRotateInterval = 10 * time.Second
+
 // --- Session limits ---
 
 // MaxSessionsPerRepo is the maximum number of sessions allowed per repository.
@@ -80,6 +85,7 @@ const (
 	MinTermWidth          = 20
 	DefaultTermWidth      = 80
 	CleanupPageSize       = 5
+	ArchivePageSize       = 10
 	MaxHotRowItems        = 5
 	TopbarCollapsedHeight = 5  // 3 content rows + 2 border lines
 	TopbarMaxGridHeight   = 15 // safety cap for expanded grid

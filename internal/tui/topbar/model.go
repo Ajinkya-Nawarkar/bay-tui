@@ -36,10 +36,12 @@ const (
 	modeGlobalSearch
 	modeCleanup
 	modeHelp
+	modeArchive
 )
 
 type clearStatusMsg struct{}
 type diffTickMsg struct{}
+type tipTickMsg struct{}
 
 type diffSummary struct {
 	Files      int
@@ -117,11 +119,18 @@ type Model struct {
 	cleanupChecked  []bool
 	cleanupCursor   int
 
+	// Archive state
+	archiveWindowIdx int
+	archiveCount     int
+
 	// Diff summary cache: session name → diff summary
 	diffCache map[string]*diffSummary
 
 	// Agent activity: session name → last heartbeat time
 	agentActive map[string]time.Time
+
+	// Tip rotation
+	tipIdx int
 }
 
 // New creates a new topbar model.
@@ -162,6 +171,7 @@ func newModel(cfg *config.Config) Model {
 		switchInput: si,
 		diffCache:   make(map[string]*diffSummary),
 		agentActive: make(map[string]time.Time),
+		tipIdx:      0,
 	}
 }
 
@@ -345,6 +355,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg { return autoActivateMsg{} },
 		tea.Tick(constants.DiffTickInterval, func(time.Time) tea.Msg { return diffTickMsg{} }),
+		tea.Tick(constants.TipRotateInterval, func(time.Time) tea.Msg { return tipTickMsg{} }),
 	)
 }
 
@@ -352,30 +363,37 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case autoActivateMsg:
-		// Check for stale sessions (older than StaleDays)
+		// Auto-archive stale sessions (older than StaleDays)
 		staleCutoff := time.Now().AddDate(0, 0, -constants.StaleDays)
-		var staleSessions []*session.Session
+		archivedCount := 0
 		for _, s := range m.sessions {
 			t := s.LastActiveAt
 			if t.IsZero() {
 				t = s.CreatedAt
 			}
 			if t.Before(staleCutoff) {
-				staleSessions = append(staleSessions, s)
+				if s.TmuxWindow != 0 && baytmux.WindowExists(s.TmuxWindow) {
+					safeKillWindow(s.TmuxWindow, fmt.Sprintf("auto-archive %q", s.Name))
+				}
+				session.Archive(s.Name)
+				if m.activeSession == s.Name {
+					m.activeSession = ""
+					m.activeWindowIdx = 0
+				}
+				archivedCount++
 			}
 		}
-		if len(staleSessions) > 0 {
-			m.cleanupSessions = staleSessions
-			m.cleanupChecked = make([]bool, len(staleSessions))
-			for i := range m.cleanupChecked {
-				m.cleanupChecked[i] = true
-			}
-			m.cleanupCursor = 0
-			m.mode = modeCleanup
-			m.focused = true
-			return m, nil
+		if archivedCount > 0 {
+			m.refresh()
 		}
-		return m.doAutoActivate()
+		m2, cmd := m.doAutoActivate()
+		if archivedCount > 0 {
+			if tm, ok := m2.(Model); ok {
+				tm.statusMsg = fmt.Sprintf("Auto-archived %d stale session(s)", archivedCount)
+				return tm, tea.Batch(cmd, clearStatusAfter(constants.StatusClearLong))
+			}
+		}
+		return m2, cmd
 
 	case diffResultMsg:
 		m.diffCache[msg.SessionName] = &msg.Summary
@@ -405,6 +423,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Poll agent heartbeat files
 		cmds = append(cmds, pollAgentStatusCmd())
 		return m, tea.Batch(cmds...)
+
+	case tipTickMsg:
+		if tips := m.currentTips(); len(tips) > 0 {
+			m.tipIdx = (m.tipIdx + 1) % len(tips)
+		}
+		return m, tea.Tick(constants.TipRotateInterval, func(time.Time) tea.Msg { return tipTickMsg{} })
 
 	case clearStatusMsg:
 		m.statusMsg = ""
@@ -441,6 +465,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.BlurMsg:
 		m.focused = false
+		m.tipIdx = randomTipIdx(m.currentTips())
 		m.statusMsg = ""
 		return m, resizeTopbarCmd(constants.TopbarCollapsedHeight)
 
@@ -467,6 +492,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeCleanup {
 			return m.updateCleanup(msg)
 		}
+		if m.mode == modeArchive {
+			return m.updateArchive(msg)
+		}
 		if m.mode == modeHelp {
 			m.mode = modeNormal
 			return m, nil
@@ -484,6 +512,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil // already focused — no-op
 			}
 			m.focused = true
+			m.tipIdx = randomTipIdx(m.currentTips())
 			m.statusMsg = ""
 			m.plusSelected = false
 			// Default to session row with active session selected
@@ -539,12 +568,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "esc":
 			m.focused = false
+			m.tipIdx = randomTipIdx(m.currentTips())
 			m.statusMsg = ""
 			return m, tea.Batch(unfocusCmd, resizeTopbarCmd(constants.TopbarCollapsedHeight))
 		case "down":
 			if m.focusRow == 0 && !m.plusSelected {
 				if len(m.activeRepoSessions()) > 0 {
 					m.focusRow = 1
+					m.tipIdx = randomTipIdx(m.currentTips())
 					m.selectedSessionIdx = 0
 				}
 			}
@@ -552,6 +583,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up":
 			if m.focusRow == 1 {
 				m.focusRow = 0
+				m.tipIdx = randomTipIdx(m.currentTips())
 			}
 			return m, resizeTopbarCmd(m.gridHeight())
 		case "left", "h":
@@ -626,6 +658,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "?":
 			m.mode = modeHelp
 			return m, nil
+		case "A":
+			return m.startArchive()
 		}
 	}
 
@@ -1568,6 +1602,94 @@ func (m Model) updateCleanup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m2, cmd
 	}
+	return m, nil
+}
+
+// startArchive launches the archive browser in a dev pane (mirrors startCreate pattern).
+func (m Model) startArchive() (tea.Model, tea.Cmd) {
+	archived, _ := session.ListArchived()
+	if len(archived) == 0 {
+		m.statusMsg = "No archived sessions"
+		return m, clearStatusAfter(constants.StatusClearDuration)
+	}
+
+	m.prevWindowIdx = m.activeWindowIdx
+	m.archiveCount = len(archived)
+
+	newWindowIdx, err := baytmux.CreateSessionWindow(config.BayDir())
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	if err := baytmux.MoveTopbarToWindow(newWindowIdx); err != nil {
+		baytmux.KillWindow(newWindowIdx)
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	if err := baytmux.SwitchToWindow(newWindowIdx); err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	bayBin, err := os.Executable()
+	if err != nil {
+		bayBin = "bay"
+	}
+	topbarTarget := baytmux.TopbarPaneTarget()
+
+	shellCmd := fmt.Sprintf("%s internal archive; if [ $? -eq 0 ]; then tmux send-keys -t %s a; else tmux send-keys -t %s B; fi; tmux select-pane -t %s; exit",
+		bayBin, topbarTarget, topbarTarget, topbarTarget)
+	baytmux.SendToDevPane(newWindowIdx, shellCmd)
+
+	m.mode = modeArchive
+	m.archiveWindowIdx = newWindowIdx
+	m.focused = false
+
+	windowIdx := newWindowIdx
+	return m, func() tea.Msg {
+		baytmux.FocusDevPane(windowIdx)
+		return tea.ClearScreen()
+	}
+}
+
+func (m Model) updateArchive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "a":
+		// Done — changes were made
+		m.mode = modeNormal
+		safeKillWindow(m.archiveWindowIdx, "archive done")
+		m.returnTopbarToPrev()
+		m.refresh()
+		m.focused = true
+		m.statusMsg = "Archive updated"
+
+		windowIdx := m.prevWindowIdx
+		return m, tea.Batch(
+			func() tea.Msg {
+				baytmux.FocusDevPane(windowIdx)
+				return tea.ClearScreen()
+			},
+			clearStatusAfter(2*time.Second),
+		)
+
+	case "B":
+		// Cancel — no changes
+		m.mode = modeNormal
+		safeKillWindow(m.archiveWindowIdx, "archive cancel")
+		m.returnTopbarToPrev()
+		m.focused = true
+
+		windowIdx := m.prevWindowIdx
+		return m, func() tea.Msg {
+			baytmux.FocusDevPane(windowIdx)
+			return tea.ClearScreen()
+		}
+	}
+
 	return m, nil
 }
 

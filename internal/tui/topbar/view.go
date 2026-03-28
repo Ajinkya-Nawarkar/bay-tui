@@ -60,14 +60,30 @@ func (m Model) View() string {
 func (m Model) renderCollapsedView(w int) string {
 	pad := "  "
 
-	// Row 1: title + active repo
-	row1 := pad + styles.CollapsedTitle.Render("bay")
+	// Row 1: title + active repo (left) + rotating tip (right)
+	row1Left := pad + styles.CollapsedTitle.Render("bay")
 	if m.activeSession != "" {
 		for _, s := range m.sessions {
 			if s.Name == m.activeSession {
-				row1 += " " + styles.CollapsedRepo.Render("· "+s.Repo)
+				row1Left += " " + styles.CollapsedRepo.Render("· "+s.Repo)
 				break
 			}
+		}
+	}
+
+	row1 := row1Left
+	if tips := m.currentTips(); len(tips) > 0 {
+		idx := m.tipIdx % len(tips)
+		leftW := lipgloss.Width(row1Left)
+		availRight := w - leftW - 4 - 2 // border/padding + min gap
+		rendered := renderTip(tips[idx], availRight)
+		if rendered != "" {
+			rightW := lipgloss.Width(rendered)
+			gap := w - leftW - rightW - 4
+			if gap < 2 {
+				gap = 2
+			}
+			row1 = row1Left + strings.Repeat(" ", gap) + rendered
 		}
 	}
 
@@ -177,8 +193,23 @@ func (m Model) renderExpandedView(w int) string {
 		return m.renderModalContent(w, pad)
 	}
 
-	// Row 1: header (diff moved to info row)
-	header := pad + styles.CollapsedTitle.Render("bay")
+	// Row 1: header (left) + rotating tip (right)
+	headerLeft := pad + styles.CollapsedTitle.Render("bay")
+	header := headerLeft
+	if tips := m.currentTips(); len(tips) > 0 {
+		idx := m.tipIdx % len(tips)
+		leftW := lipgloss.Width(headerLeft)
+		availRight := w - leftW - 4 - 2
+		rendered := renderTip(tips[idx], availRight)
+		if rendered != "" {
+			rightW := lipgloss.Width(rendered)
+			gap := w - leftW - rightW - 4
+			if gap < 2 {
+				gap = 2
+			}
+			header = headerLeft + strings.Repeat(" ", gap) + rendered
+		}
+	}
 
 	// Row 2: horizontal repo tabs
 	var repoTabs []string
@@ -341,6 +372,7 @@ func (m Model) renderModalContent(w int, pad string) string {
 			styles.NoteText.Render("N") + " " + styles.HelpBar.Render("note") + "  " +
 			styles.NoteText.Render("/") + " " + styles.HelpBar.Render("search") + "  " +
 			styles.NoteText.Render("m") + " " + styles.HelpBar.Render("memory") + "  " +
+			styles.NoteText.Render("A") + " " + styles.HelpBar.Render("archive") + "  " +
 			styles.NoteText.Render("S") + " " + styles.HelpBar.Render("settings") + "  " +
 			styles.NoteText.Render("q") + " " + styles.HelpBar.Render("quit") + "  " +
 			styles.NoteText.Render("esc") + " " + styles.HelpBar.Render("exit") + "\n" +
@@ -351,6 +383,9 @@ func (m Model) renderModalContent(w int, pad string) string {
 			styles.NoteText.Render("`+d/D") + " " + styles.HelpBar.Render("split") + "  " +
 			styles.NoteText.Render("`+w") + " " + styles.HelpBar.Render("close") + "  " +
 			styles.NoteText.Render("`+arrows") + " " + styles.HelpBar.Render("nav")
+	case modeArchive:
+		return header + "\n" + pad + styles.Title.Render("bay archive") + "   " +
+			styles.Subtitle.Render(fmt.Sprintf("%d archived session(s)", m.archiveCount))
 	case modeCleanup:
 		var items []string
 		start := 0
@@ -437,6 +472,9 @@ func (m Model) renderHintBarPlain() string {
 	if m.mode == modeHelp {
 		return tmuxHint("any key", "close")
 	}
+	if m.mode == modeArchive {
+		return tmuxHint("browsing", "archived sessions below")
+	}
 	if m.mode == modeCleanup {
 		return tmuxHint("space", "toggle") + gap + tmuxHint("a", "all") + gap + tmuxHint("enter", "delete") + gap + tmuxHint("esc", "skip")
 	}
@@ -450,6 +488,7 @@ func (m Model) renderHintBarPlain() string {
 			tmuxHint("N", "note") + gap +
 			tmuxHint("/", "search") + gap +
 			tmuxHint("m", "memory") + gap +
+			tmuxHint("A", "archive") + gap +
 			tmuxHint("S", "settings") + gap +
 			tmuxHint("?", "help") + gap +
 			tmuxHint("q", "quit") + gap +
