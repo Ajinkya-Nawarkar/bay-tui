@@ -140,7 +140,7 @@ func ensureClaudeHook() {
 	}
 
 	// Always use the stable install path
-	hookCmd := filepath.Join(installDir(), "bay") + " context"
+	hookCmd := filepath.Join(installDir(), "bay") + " ctx"
 
 	// Check and add SessionStart hook if missing
 	hasSessionStart := false
@@ -151,7 +151,7 @@ func ensureClaudeHook() {
 					if innerHooks, ok := m["hooks"].([]any); ok {
 						for _, h := range innerHooks {
 							if hm, ok := h.(map[string]any); ok {
-								if cmd, _ := hm["command"].(string); strings.HasSuffix(cmd, "bay context") {
+								if cmd, _ := hm["command"].(string); strings.HasSuffix(cmd, "bay ctx") || strings.HasSuffix(cmd, "bay context") {
 									hasSessionStart = true
 								}
 							}
