@@ -2,9 +2,11 @@ package topbar
 
 import (
 	"math/rand"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
+	"bay/internal/constants"
 	"bay/internal/session"
 	"bay/internal/tui/styles"
 )
@@ -21,6 +23,7 @@ var tipsFocusedReposBase = []tip{
 	{"↓", "browse sessions"},
 	{"n", "new session"},
 	{"/", "search all"},
+	{"s", "session status"},
 }
 
 // currentTips returns tips relevant to the current topbar state.
@@ -51,7 +54,22 @@ func (m Model) unfocusedTips() []tip {
 		tips = append(tips, tip{"`+/", "search sessions"})
 	}
 	tips = append(tips, tip{"`+a", "launch agent"})
+
+	// Suggest status dashboard when agents are running
+	if m.hasActiveAgents() {
+		tips = append(tips, tip{"`+s", "check agent status"})
+	}
 	return tips
+}
+
+// hasActiveAgents returns true if any session has a recent heartbeat.
+func (m Model) hasActiveAgents() bool {
+	for _, t := range m.agentActive {
+		if time.Since(t) < constants.AgentIdleThreshold {
+			return true
+		}
+	}
+	return false
 }
 
 // focusedRepoTips builds tips for the repos row, conditionally showing archive tip.
@@ -78,6 +96,7 @@ func (m Model) focusedSessionTips() []tip {
 		}
 	}
 
+	tips = append(tips, tip{"s", "session status"})
 	tips = append(tips, tip{"a", "archive session"})
 	tips = append(tips, tip{"d", "delete session"})
 	tips = append(tips, tip{"R", "rename session"})

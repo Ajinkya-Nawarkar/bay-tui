@@ -118,4 +118,13 @@ const (
 const (
 	ActiveSessionFile  = ".active-session"
 	CreatedSessionFile = ".created-session"
+	SwitchTargetFile   = ".switch-target"
+)
+
+// --- Activity thresholds (for status dashboard) ---
+
+const (
+	AgentIdleThreshold    = 30 * time.Second
+	AgentDormantThreshold = 1 * time.Hour
+	StatusRefreshInterval = 2 * time.Second
 )

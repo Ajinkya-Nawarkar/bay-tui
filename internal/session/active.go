@@ -79,6 +79,33 @@ func ClearCreatedSession() error {
 	return err
 }
 
+func switchTargetPath() string {
+	return filepath.Join(config.BayDir(), constants.SwitchTargetFile)
+}
+
+// SaveSwitchTarget persists the selected session name for the topbar to read.
+func SaveSwitchTarget(name string) error {
+	return os.WriteFile(switchTargetPath(), []byte(name), 0o644)
+}
+
+// LoadSwitchTarget reads the switch target session name from disk.
+func LoadSwitchTarget() string {
+	data, err := os.ReadFile(switchTargetPath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// ClearSwitchTarget removes the switch-target marker file.
+func ClearSwitchTarget() error {
+	err := os.Remove(switchTargetPath())
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
 // currentWindowIndex returns the active tmux window index.
 func currentWindowIndex() (int, error) {
 	cmd := exec.Command("tmux", "display-message", "-p", "#{window_index}")
