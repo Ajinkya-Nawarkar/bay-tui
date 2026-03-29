@@ -79,8 +79,8 @@ var keys = keyMap{
 		key.WithHelp("R", "rename"),
 	),
 	Purpose: key.NewBinding(
-		key.WithKeys("N"),
-		key.WithHelp("N", "edit purpose"),
+		key.WithKeys("P"),
+		key.WithHelp("P", "edit purpose"),
 	),
 	PurposeView: key.NewBinding(
 		key.WithKeys("p"),

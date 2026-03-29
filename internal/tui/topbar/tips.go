@@ -90,7 +90,7 @@ func (m Model) focusedSessionTips() []tip {
 	if name := m.selectedSessionName(); name != "" {
 		for _, s := range m.sessions {
 			if s.Name == name && s.Purpose == "" {
-				tips = append(tips, tip{"N", "set purpose"})
+				tips = append(tips, tip{"P", "set purpose"})
 				break
 			}
 		}

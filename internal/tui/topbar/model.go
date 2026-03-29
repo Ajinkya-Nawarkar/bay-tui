@@ -648,7 +648,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m.startRename()
-		case "N":
+		case "P":
 			if m.focusRow != 1 || len(m.activeRepoSessions()) == 0 {
 				m.statusMsg = "Select a session first"
 				return m, clearStatusAfter(constants.StatusClearDuration)

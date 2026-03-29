@@ -374,7 +374,7 @@ func (m Model) renderModalContent(w int, pad string) string {
 			styles.NoteText.Render("a") + " " + styles.HelpBar.Render("archive") + "  " +
 			styles.NoteText.Render("d") + " " + styles.HelpBar.Render("delete") + "  " +
 			styles.NoteText.Render("R") + " " + styles.HelpBar.Render("rename") + "  " +
-			styles.NoteText.Render("N") + " " + styles.HelpBar.Render("purpose") + "  " +
+			styles.NoteText.Render("P") + " " + styles.HelpBar.Render("purpose") + "  " +
 			styles.NoteText.Render("p") + " " + styles.HelpBar.Render("purpose view") + "  " +
 			styles.NoteText.Render("/") + " " + styles.HelpBar.Render("search") + "  " +
 			styles.NoteText.Render("s") + " " + styles.HelpBar.Render("status") + "  " +
@@ -503,7 +503,7 @@ func (m Model) renderHintBarPlain() string {
 			tmuxHint("n", "new") + gap +
 			tmuxHint("d", "delete") + gap +
 			tmuxHint("R", "rename") + gap +
-			tmuxHint("N", "purpose") + gap +
+			tmuxHint("P", "purpose") + gap +
 			tmuxHint("p", "purpose view") + gap +
 			tmuxHint("/", "search") + gap +
 			tmuxHint("s", "status") + gap +
