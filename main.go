@@ -54,7 +54,7 @@ func run() (exitCode int) {
 			return 1
 		}
 
-	case "ctx":
+	case "ctx", "context":
 		if err := cmd.Ctx(args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
