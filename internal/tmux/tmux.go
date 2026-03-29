@@ -494,6 +494,16 @@ func bindKeysImpl(run RunnerFunc, agentCmd string) error {
 		run("set-hook", "-g", hook,
 			fmt.Sprintf("run-shell '%s'", resizeTopbar))
 	}
+	// Guard against users dragging the topbar border: re-enforce height on any
+	// pane resize, but only if the topbar's current height differs from the saved
+	// height to avoid infinite hook recursion.
+	guardedResize := fmt.Sprintf(
+		"cur=$(tmux display-message -t $(cat %s) -p '#{pane_height}' 2>/dev/null); "+
+			"want=$(cat %s 2>/dev/null || echo %d); "+
+			"[ \"$cur\" != \"$want\" ] && tmux resize-pane -t $(cat %s) -y $want 2>/dev/null || true",
+		topbarIDFile, topbarHtFile, constants.TopbarCollapsedHeight, topbarIDFile)
+	run("set-hook", "-g", "after-resize-pane",
+		fmt.Sprintf("run-shell '%s'", guardedResize))
 	ensurePane := bayBin() + " internal ensure-pane &"
 	run("set-hook", "-g", "after-kill-pane",
 		fmt.Sprintf("run-shell '%s; %s'", resizeTopbar, ensurePane))
@@ -834,12 +844,12 @@ type SessionPane struct {
 
 // agentLaunchCmd returns the shell command to launch an agent pane.
 // If a Claude session ID exists, resumes it; otherwise starts fresh.
-// Appends "; exec bash" so that if the agent exits (e.g. failed resume),
-// the pane falls back to an interactive shell instead of being destroyed.
+// Uses "||" to fall back to a fresh agent if resume fails (e.g. Claude
+// purged the conversation), then "; exec bash" as a final safety net.
 func agentLaunchCmd(agentSessionID string) string {
 	bin := bayBin()
 	if agentSessionID != "" {
-		return fmt.Sprintf("%s agent --resume %s; exec bash", bin, agentSessionID)
+		return fmt.Sprintf("%s agent --resume %s || %s agent; exec bash", bin, agentSessionID, bin)
 	}
 	return bin + " agent; exec bash"
 }
@@ -851,13 +861,12 @@ func hintsFile() string {
 }
 
 // WriteTopbarHints writes plain-text hints to disk for tmux status-right to display.
-// Forces an immediate status bar refresh so the change is visible without waiting
-// for the next status-interval tick.
+// Refresh is async to avoid blocking the Bubbletea render loop.
 func WriteTopbarHints(hints string) {
 	f := hintsFile()
 	os.MkdirAll(filepath.Dir(f), 0o755)
 	os.WriteFile(f, []byte(hints), 0o644)
-	run("refresh-client", "-S")
+	go run("refresh-client", "-S")
 }
 
 // EnsureDevPane checks if any non-topbar panes exist in the given window.
