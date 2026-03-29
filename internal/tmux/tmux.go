@@ -790,7 +790,7 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 		if i == 0 {
 			// First pane already exists — launch agent if needed, set title
 			if p.Type == "agent" {
-				agentCmd := agentLaunchCmd(p.AgentSessionID)
+				agentCmd := agentLaunchCmd(p.AgentSessionID, p.Cwd)
 				// Use respawn-pane to replace the shell directly instead of
 				// send-keys. send-keys races with shell initialization and
 				// can cause claude to crash in the half-ready environment.
@@ -813,7 +813,7 @@ func RecreateSessionPanes(windowIndex int, panes []SessionPane) error {
 		if p.Type == "agent" {
 			// split-window runs the command directly as the pane process —
 			// no bash -c wrapper needed.
-			args = append(args, agentLaunchCmd(p.AgentSessionID))
+			args = append(args, agentLaunchCmd(p.AgentSessionID, p.Cwd))
 		}
 		if _, err := run(args...); err != nil {
 			continue // Non-fatal: best-effort recreation
@@ -843,15 +843,29 @@ type SessionPane struct {
 }
 
 // agentLaunchCmd returns the shell command to launch an agent pane.
-// If a Claude session ID exists, resumes it; otherwise starts fresh.
-// Uses "||" to fall back to a fresh agent if resume fails (e.g. Claude
-// purged the conversation), then "; exec bash" as a final safety net.
-func agentLaunchCmd(agentSessionID string) string {
+// If a valid Claude session exists on disk, resumes it; otherwise starts fresh.
+func agentLaunchCmd(agentSessionID string, workingDir string) string {
 	bin := bayBin()
-	if agentSessionID != "" {
-		return fmt.Sprintf("%s agent --resume %s || %s agent; exec bash", bin, agentSessionID, bin)
+	if agentSessionID != "" && claudeSessionExists(agentSessionID, workingDir) {
+		return fmt.Sprintf("%s agent --resume %s; exec bash", bin, agentSessionID)
 	}
 	return bin + " agent; exec bash"
+}
+
+// claudeSessionExists checks if a Claude Code conversation JSONL file exists.
+func claudeSessionExists(uuid string, workingDir string) bool {
+	if uuid == "" || workingDir == "" {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	// Claude Code encodes project paths by replacing "/" with "-" and dropping the leading "/"
+	encoded := strings.ReplaceAll(workingDir[1:], "/", "-")
+	path := filepath.Join(home, ".claude", "projects", encoded, uuid+".jsonl")
+	_, err = os.Stat(path)
+	return err == nil
 }
 
 // hintsFile returns the path where topbar hints are written for tmux status bar.
