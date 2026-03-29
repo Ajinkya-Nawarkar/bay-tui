@@ -709,7 +709,7 @@ type PaneInfo struct {
 func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 	sep := "%%BAY%%"
 	out, err := run("list-panes", "-t", fmt.Sprintf("%s:%d", MainSession, windowIndex),
-		"-F", fmt.Sprintf("#{pane_id}%s#{pane_title}%s#{pane_start_command}%s#{pane_current_path}", sep, sep, sep))
+		"-F", fmt.Sprintf("#{pane_id}%s#{pane_title}%s#{pane_start_command}%s#{pane_current_path}%s#{pane_dead}", sep, sep, sep, sep))
 	if err != nil {
 		return nil, fmt.Errorf("list-panes: %w", err)
 	}
@@ -723,8 +723,8 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 			continue
 		}
 
-		parts := strings.SplitN(line, sep, 4)
-		if len(parts) < 4 {
+		parts := strings.SplitN(line, sep, 5)
+		if len(parts) < 5 {
 			continue
 		}
 
@@ -732,9 +732,17 @@ func SnapshotPaneLayout(windowIndex int) ([]PaneInfo, error) {
 		title := parts[1]
 		startCmd := parts[2]
 		cwd := parts[3]
+		dead := parts[4]
 
 		// Skip topbar pane
 		if paneID == topbarID {
+			continue
+		}
+
+		// Skip dead panes — pane-exited fires before tmux auto-destroys the pane,
+		// so we must exclude panes whose process has already exited to avoid
+		// persisting stale panes that get recreated on cold boot.
+		if dead == "1" {
 			continue
 		}
 
