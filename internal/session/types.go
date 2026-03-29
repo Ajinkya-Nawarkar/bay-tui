@@ -4,13 +4,12 @@ import "time"
 
 // Pane represents a single pane within a session.
 type Pane struct {
-	Type    string `yaml:"type"`              // "shell" or "agent"
-	Cwd     string `yaml:"cwd"`               // working directory
-	Command string `yaml:"command,omitempty"`  // command running (e.g., "claude")
-	PaneID          string `yaml:"pane_id,omitempty"`           // tmux pane ID (transient, for mapping)
-	Title           string `yaml:"title,omitempty"`              // user-set pane label
-	AgentSessionID string `yaml:"agent_session_id,omitempty"` // agent session UUID for resume
-	TaskID         int    `yaml:"task_id,omitempty"`           // assigned task from tasks table
+	Type           string `yaml:"type"`                        // "shell" or "agent"
+	Cwd            string `yaml:"cwd"`                         // working directory
+	Command        string `yaml:"command,omitempty"`            // command running (e.g., "claude")
+	PaneID         string `yaml:"pane_id,omitempty"`            // tmux pane ID (transient, for mapping)
+	Title          string `yaml:"title,omitempty"`              // user-set pane label
+	AgentSessionID string `yaml:"agent_session_id,omitempty"`   // agent session UUID for resume
 }
 
 // Session represents a bay dev session.
@@ -26,7 +25,7 @@ type Session struct {
 	ArchivedAt     time.Time `yaml:"archived_at,omitempty"`
 	TmuxWindow     int       `yaml:"tmux_window,omitempty"`
 	Panes          []Pane    `yaml:"panes"`
-	Note           string    `yaml:"note,omitempty"`
+	Purpose        string    `yaml:"purpose,omitempty"`
 }
 
 // IsArchived returns true if the session has been archived.

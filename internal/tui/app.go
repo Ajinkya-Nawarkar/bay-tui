@@ -1,15 +1,10 @@
 // Package tui implements the Bubbletea TUI layer for bay.
-//
-// App is the root model that routes between screens: topbar, setup, and memory.
-// It follows the Elm architecture: each screen has its own Model/Update/View.
-// Screen switching is driven by typed messages (DoneMsg, BackMsg, SwitchToXMsg).
 package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/config"
-	tmemory "bay/internal/tui/memory"
 	"bay/internal/tui/setup"
 	"bay/internal/tui/topbar"
 )
@@ -19,17 +14,15 @@ type screen int
 const (
 	screenTopbar screen = iota
 	screenSetup
-	screenMemory
 )
 
 // App is the root Bubbletea model that switches between screens.
 type App struct {
-	screen      screen
-	topbar      topbar.Model
-	setupModel  setup.Model
-	memoryModel tmemory.Model
-	cfg         *config.Config
-	firstRun    bool
+	screen     screen
+	topbar     topbar.Model
+	setupModel setup.Model
+	cfg        *config.Config
+	firstRun   bool
 }
 
 // NewApp creates the root app model.
@@ -69,7 +62,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
-	// Screen switching messages
 	case setup.DoneMsg:
 		a.cfg = msg.Config
 		a.screen = screenTopbar
@@ -80,16 +72,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.setupModel = setup.New()
 		a.screen = screenSetup
 		return a, a.setupModel.Init()
-
-	case topbar.SwitchToMemoryMsg:
-		a.memoryModel = tmemory.New(msg.SessionName)
-		a.screen = screenMemory
-		return a, a.memoryModel.Init()
-
-	case tmemory.BackMsg:
-		a.screen = screenTopbar
-		a.topbar.Refresh()
-		return a, nil
 	}
 
 	// Route to active screen
@@ -103,11 +85,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, cmd := a.setupModel.Update(msg)
 		a.setupModel = m.(setup.Model)
 		return a, cmd
-
-	case screenMemory:
-		m, cmd := a.memoryModel.Update(msg)
-		a.memoryModel = m.(tmemory.Model)
-		return a, cmd
 	}
 
 	return a, nil
@@ -118,8 +95,6 @@ func (a App) View() string {
 	switch a.screen {
 	case screenSetup:
 		return a.setupModel.View()
-	case screenMemory:
-		return a.memoryModel.View()
 	default:
 		return a.topbar.View()
 	}

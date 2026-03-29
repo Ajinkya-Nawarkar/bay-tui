@@ -1,16 +1,4 @@
 // Package db provides a singleton SQLite connection to ~/.bay/bay.db.
-//
-// The connection is lazily initialized via sync.Once, making it thread-safe for
-// the first caller. WAL (Write-Ahead Logging) mode is enabled so the long-running
-// topbar TUI and short-lived CLI processes can read and write concurrently without
-// lock contention.
-//
-// On first open, migrate() runs idempotent CREATE TABLE IF NOT EXISTS statements
-// and sets up any required triggers, so the schema is always up to date.
-//
-// OpenPath(path) is the testing entrypoint — pass ":memory:" for an ephemeral
-// in-memory database. ResetSingleton() tears down the singleton so tests can
-// re-initialize cleanly; it is not safe for concurrent use in production.
 package db
 
 import (
@@ -37,7 +25,6 @@ func Open() (*sql.DB, error) {
 		if err != nil {
 			return
 		}
-		// Enable WAL mode for better concurrent read/write performance.
 		if _, e := conn.Exec("PRAGMA journal_mode=WAL"); e != nil {
 			logging.Warn("PRAGMA journal_mode=WAL failed: %v", e)
 		}
@@ -73,52 +60,10 @@ func DBPath() string {
 	return filepath.Join(config.BayDir(), "bay.db")
 }
 
-// migrate runs CREATE TABLE IF NOT EXISTS for all tables + FTS + triggers.
+// migrate runs CREATE TABLE IF NOT EXISTS for all tables.
 func migrate(db *sql.DB) error {
 	stmts := []string{
-		// Episodic Memory: raw event log
-		`CREATE TABLE IF NOT EXISTS episodic (
-			id               INTEGER PRIMARY KEY AUTOINCREMENT,
-			session_id       TEXT NOT NULL,
-			type             TEXT NOT NULL,
-			content          TEXT NOT NULL,
-			pane_id          TEXT,
-			agent_session_id TEXT,
-			timestamp        DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-
-		// FTS5 virtual table for full-text search over episodic content
-		`CREATE VIRTUAL TABLE IF NOT EXISTS episodic_fts USING fts5(
-			content,
-			session_id,
-			type,
-			content='episodic',
-			content_rowid='id'
-		)`,
-
-		// Working Memory: live session state
-		`CREATE TABLE IF NOT EXISTS working_state (
-			session_id       TEXT PRIMARY KEY,
-			repo             TEXT NOT NULL,
-			worktree_path    TEXT,
-			git_branch       TEXT,
-			agent_session_id TEXT,
-			current_task     TEXT,
-			last_summary     TEXT,
-			active_since     DATETIME,
-			last_updated     DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-
-		// Pending summaries: raw buffers awaiting async LLM summarization
-		`CREATE TABLE IF NOT EXISTS pending_summaries (
-			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			session_id  TEXT NOT NULL,
-			raw_buffer  TEXT NOT NULL,
-			retry_count INTEGER DEFAULT 0,
-			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-
-		// Tasks: hierarchical task tracking per session
+		// Tasks: flat checklist per session
 		`CREATE TABLE IF NOT EXISTS tasks (
 			id           INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id   TEXT NOT NULL,
@@ -138,40 +83,6 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
-
-	// Create triggers only if they don't exist.
-	// SQLite doesn't have CREATE TRIGGER IF NOT EXISTS, so we check first.
-	var count int
-	if e := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='episodic_ai'").Scan(&count); e != nil {
-		logging.Warn("checking episodic_ai trigger: %v", e)
-	}
-	if count == 0 {
-		_, err := db.Exec(`CREATE TRIGGER episodic_ai AFTER INSERT ON episodic BEGIN
-			INSERT INTO episodic_fts(rowid, content, session_id, type)
-			VALUES (new.id, new.content, new.session_id, new.type);
-		END`)
-		if err != nil {
-			return err
-		}
-	}
-
-	if e := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name='episodic_ad'").Scan(&count); e != nil {
-		logging.Warn("checking episodic_ad trigger: %v", e)
-	}
-	if count == 0 {
-		_, err := db.Exec(`CREATE TRIGGER episodic_ad AFTER DELETE ON episodic BEGIN
-			INSERT INTO episodic_fts(episodic_fts, rowid, content, session_id, type)
-			VALUES ('delete', old.id, old.content, old.session_id, old.type);
-		END`)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Backward-compat migrations for existing DBs that lack newer columns.
-	// These are try-and-ignore — they fail silently on fresh installs where
-	// CREATE TABLE already includes the columns.
-	db.Exec(`ALTER TABLE episodic ADD COLUMN agent_session_id TEXT`)
 
 	return nil
 }

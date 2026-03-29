@@ -30,7 +30,7 @@ const (
 	modeNormal mode = iota
 	modeRename
 	modeConfirmDelete
-	modeEditNote
+	modeEditPurpose
 	modeSettings
 	modeCreate
 	modeGlobalSearch
@@ -72,10 +72,6 @@ func clearStatusAfter(d time.Duration) tea.Cmd {
 // SwitchToSetupMsg tells the app to switch to setup screen.
 type SwitchToSetupMsg struct{}
 
-// SwitchToMemoryMsg tells the app to switch to memory viewer.
-type SwitchToMemoryMsg struct {
-	SessionName string
-}
 
 // Model is the topbar screen state.
 type Model struct {
@@ -90,10 +86,10 @@ type Model struct {
 	plusSelected        bool
 	mode               mode
 	renameInput        textinput.Model
-	noteInput          textinput.Model
+	purposeInput          textinput.Model
 	deleteTarget       string
 	renameTarget       string
-	noteTarget         string
+	purposeTarget         string
 	activeSession      string
 	activeWindowIdx    int
 	settingsWindowIdx  int
@@ -171,7 +167,7 @@ func newModel(cfg *config.Config) Model {
 	return Model{
 		cfg:         cfg,
 		renameInput: ri,
-		noteInput:   ni,
+		purposeInput:   ni,
 		switchInput: si,
 		diffCache:   make(map[string]*diffSummary),
 		agentActive: make(map[string]time.Time),
@@ -310,7 +306,7 @@ func (m *Model) gridHeight() int {
 	h := 3 + 2
 	// +1 for contextual note if cursor is on a session with a note
 	if m.focused && m.focusRow == 1 {
-		if m.displayedSessionNote() != "" {
+		if m.displayedSessionPurpose() != "" {
 			h++
 		}
 	}
@@ -481,8 +477,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeConfirmDelete {
 			return m.updateConfirmDelete(msg)
 		}
-		if m.mode == modeEditNote {
-			return m.updateEditNote(msg)
+		if m.mode == modeEditPurpose {
+			return m.updateEditPurpose(msg)
 		}
 		if m.mode == modeSettings {
 			return m.updateSettings(msg)
@@ -629,17 +625,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
 			return m.startCreate(repoName)
-		case "m":
-			if m.focusRow != 1 || len(m.activeRepoSessions()) == 0 {
-				m.statusMsg = "Select a session first"
-				return m, clearStatusAfter(constants.StatusClearDuration)
-			}
-			sessionName := m.activeSession
-			if sessionName == "" {
-				m.statusMsg = "No active session"
-				return m, clearStatusAfter(constants.StatusClearDuration)
-			}
-			return m, func() tea.Msg { return SwitchToMemoryMsg{SessionName: sessionName} }
 		case "a":
 			if m.focusRow != 1 || len(m.activeRepoSessions()) == 0 {
 				m.statusMsg = "Select a session first"
@@ -663,7 +648,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMsg = "Select a session first"
 				return m, clearStatusAfter(constants.StatusClearDuration)
 			}
-			return m.startEditNote()
+			return m.startEditPurpose()
 		case "S":
 			return m.startSettings()
 		case "/":
@@ -1056,53 +1041,50 @@ func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m Model) startEditNote() (tea.Model, tea.Cmd) {
+func (m Model) startEditPurpose() (tea.Model, tea.Cmd) {
 	target := m.selectedSessionName()
 	if target == "" {
 		m.statusMsg = "No session"
 		return m, clearStatusAfter(constants.StatusClearDuration)
 	}
-	m.mode = modeEditNote
-	m.noteTarget = target
-	// Pre-fill with existing note
+	m.mode = modeEditPurpose
+	m.purposeTarget = target
 	s, err := session.Load(target)
 	if err == nil {
-		m.noteInput.SetValue(s.Note)
+		m.purposeInput.SetValue(s.Purpose)
 	} else {
-		m.noteInput.SetValue("")
+		m.purposeInput.SetValue("")
 	}
-	m.noteInput.Focus()
+	m.purposeInput.Focus()
 	return m, textinput.Blink
 }
 
-func (m Model) updateEditNote(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateEditPurpose(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
-		note := m.noteInput.Value()
-		s, err := session.Load(m.noteTarget)
+		purpose := m.purposeInput.Value()
+		s, err := session.Load(m.purposeTarget)
 		if err == nil {
-			s.Note = note
+			s.Purpose = purpose
 			session.Save(s)
 		}
 		m.mode = modeNormal
-		m.noteTarget = ""
+		m.purposeTarget = ""
 		m.refresh()
 		return m, nil
 	case "esc":
 		m.mode = modeNormal
-		m.noteTarget = ""
+		m.purposeTarget = ""
 		return m, nil
 	default:
 		var cmd tea.Cmd
-		m.noteInput, cmd = m.noteInput.Update(msg)
+		m.purposeInput, cmd = m.purposeInput.Update(msg)
 		return m, cmd
 	}
 }
 
-// displayedSessionNote returns the note for the session currently shown in the topbar.
-// In focus mode on the sessions row, this is the selected session; otherwise the active session.
-func (m *Model) displayedSessionNote() string {
-	// Don't show note when browsing repos
+// displayedSessionPurpose returns the purpose for the session currently shown.
+func (m *Model) displayedSessionPurpose() string {
 	if m.focused && m.focusRow == 0 {
 		return ""
 	}
@@ -1112,7 +1094,7 @@ func (m *Model) displayedSessionNote() string {
 	}
 	for _, s := range m.sessions {
 		if s.Name == target {
-			return s.Note
+			return s.Purpose
 		}
 	}
 	return ""

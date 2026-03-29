@@ -2,14 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"bay/internal/config"
 	"bay/internal/memory"
 	"bay/internal/session"
 )
 
-// Context outputs session context to stdout for use as a Claude SessionStart hook.
+// Context outputs session context to stdout for use as a Claude SessionStart/PostCompact hook.
 // This must NEVER return an error — a non-zero exit causes Claude to show "startup hook error".
 func Context() error {
 	cfg, err := config.Load()
@@ -26,19 +25,7 @@ func Context() error {
 		return nil
 	}
 
-	// Look up pane's assigned TaskID from session YAML
-	paneTaskID := 0
-	paneID := os.Getenv("TMUX_PANE")
-	if paneID != "" {
-		for _, p := range s.Panes {
-			if p.PaneID == paneID {
-				paneTaskID = p.TaskID
-				break
-			}
-		}
-	}
-
-	ctx, err := memory.RenderContextDB(nil, s.Name, s.Note, paneTaskID)
+	ctx, err := memory.RenderContext(s.Name, s.Repo, s.WorktreeBranch, s.Purpose)
 	if err != nil {
 		return nil
 	}

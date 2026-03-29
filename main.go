@@ -159,25 +159,19 @@ Usage:
 Sessions:
   bay session ls             List all sessions
   bay session kill <name>    Kill a session and clean up its resources
-  bay session note "text"    Add note to session history
-  bay session show [name]    Show session state (tasks, summary, repo, branch)
-  bay session history [-n]   Show episodic log
-  bay session clear [name]   Clear all memory for a session
+  bay session show [name]    Show session info (purpose, checklist, repo)
 
-Tasks:
-  bay task "description"     Create a task in the current session
-  bay task add "desc" [-p N] Add a subtask (optionally under task #N)
-  bay task ls                List all tasks with status
-  bay task done <id>         Mark task done
-  bay task doing <id>        Mark task in-progress
-  bay task rm <id>           Remove a task (and subtasks)
-  bay task assign <id>       Assign the current pane to a task
-  bay task clear             Clear all tasks for the session
+Session Purpose:
+  bay task "purpose text"    Set session purpose
+  bay task add "item"        Add checklist item
+  bay task ls                Show purpose + checklist
+  bay task done <id>         Mark item done
+  bay task rm <id>           Remove item
+  bay task clear             Clear all checklist items
 
-Search & Status:
-  bay search         Search sessions + activity dashboard
-  bay ctx search "query"     Full-text search across all sessions
-  bay ctx config             Show/toggle memory features
+Search & Config:
+  bay search                 Search sessions + activity dashboard
+  bay ctx config             Show/toggle context injection settings
 
 Infrastructure:
   bay setup        Run the setup wizard
@@ -196,8 +190,8 @@ Top bar (` + "`" + ` prefix):
 
 Bay view mode (` + "`" + `+space to enter, esc to leave):
   h/l     Switch repo      n/d/R   New/delete/rename session
-  N       Edit session note
-  m       Memory viewer    Enter   Activate session
+  N       Edit purpose     /       Search sessions
+  s       Status dashboard Enter   Activate session
   q       Quit bay         esc     Leave bay view
 
 Pane management (` + "`" + ` then):

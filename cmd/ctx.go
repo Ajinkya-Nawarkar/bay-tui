@@ -7,20 +7,15 @@ import (
 	"strings"
 
 	"bay/internal/config"
-	"bay/internal/constants"
-	"bay/internal/memory"
 )
 
-// Ctx handles the `bay ctx` subcommands — search and config.
+// Ctx handles the `bay ctx` subcommands.
 func Ctx(args []string) error {
 	if len(args) == 0 {
 		return Context()
 	}
 
 	switch args[0] {
-	case "search":
-		return ctxSearch(args[1:])
-
 	case "config":
 		return ctxConfig(args[1:])
 
@@ -35,49 +30,6 @@ func Ctx(args []string) error {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Search
-// ---------------------------------------------------------------------------
-
-func ctxSearch(args []string) error {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: bay ctx search \"query\" [--session name]")
-		return nil
-	}
-
-	query := args[0]
-	sessionFilter := ""
-
-	for i := 1; i < len(args); i++ {
-		if args[i] == "--session" && i+1 < len(args) {
-			sessionFilter = args[i+1]
-			i++
-		}
-	}
-
-	results, err := memory.SearchEpisodic(query, sessionFilter)
-	if err != nil {
-		return fmt.Errorf("search failed: %w", err)
-	}
-
-	if len(results) == 0 {
-		fmt.Printf("No results for '%s'\n", query)
-		return nil
-	}
-
-	fmt.Printf("Search results for '%s' (%d matches):\n\n", query, len(results))
-	for _, e := range results {
-		ts := e.Timestamp.Format(constants.TimeFmtCompact)
-		content := truncatePreview(e.Content)
-		fmt.Printf("  [%s] %-12s %-15s %s\n", ts, e.SessionID, e.Type, content)
-	}
-	return nil
-}
-
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
-
 func ctxConfig(args []string) error {
 	if len(args) == 0 {
 		cfg, err := config.Load()
@@ -85,10 +37,8 @@ func ctxConfig(args []string) error {
 			return err
 		}
 		m := cfg.Memory
-		fmt.Printf("Memory Configuration:\n")
+		fmt.Printf("Context Configuration:\n")
 		fmt.Printf("  enabled:            %v\n", m.Enabled)
-		fmt.Printf("  episodic_logging:   %v\n", m.EpisodicLogging)
-		fmt.Printf("  auto_summarize:     %v\n", m.AutoSummarize)
 		fmt.Printf("  context_injection:  %v\n", m.ContextInjection)
 		fmt.Printf("  context_budget:     %d\n", m.ContextBudget)
 		return nil
@@ -109,10 +59,6 @@ func ctxConfig(args []string) error {
 	switch feature {
 	case "enabled":
 		cfg.Memory.Enabled = parseBool(args[1])
-	case "episodic_logging":
-		cfg.Memory.EpisodicLogging = parseBool(args[1])
-	case "auto_summarize":
-		cfg.Memory.AutoSummarize = parseBool(args[1])
 	case "context_injection":
 		cfg.Memory.ContextInjection = parseBool(args[1])
 	case "context_budget":
@@ -142,28 +88,12 @@ func parseBool(s string) bool {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Help
-// ---------------------------------------------------------------------------
-
 func printCtxHelp() {
-	fmt.Println(`bay ctx — Search and configuration
+	fmt.Println(`bay ctx — Context injection configuration
 
 Usage:
-
-  Search
-    bay ctx search "query" [--session S]
-                                       Full-text search across all session history.
-                                       Finds past terminal output, notes, and summaries.
-
-  Configuration
-    bay ctx config                     Show current memory feature settings.
-    bay ctx config <feature> on|off    Toggle: enabled, episodic_logging, auto_summarize,
-                                       context_injection. Also: context_budget <int>.
-
-Context file management has moved to bctx:
-    bctx files                         List registered context files.
-    bctx add <name> <path>             Register a context file.
-    bctx rm <name>                     Remove a context file.
-    bctx toggle <name>                 Enable/disable a context file.`)
+  bay ctx                            Output session context (used by hooks).
+  bay ctx config                     Show context injection settings.
+  bay ctx config <feature> on|off    Toggle: enabled, context_injection.
+                                     Also: context_budget <int>.`)
 }

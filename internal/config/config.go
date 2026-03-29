@@ -124,8 +124,6 @@ func DefaultConfig() *Config {
 func DefaultMemoryConfig() MemoryConfig {
 	return MemoryConfig{
 		Enabled:          true,
-		EpisodicLogging:  true,
-		AutoSummarize:    true,
 		ContextInjection: true,
 		ContextBudget:    DefaultContextBudget,
 	}

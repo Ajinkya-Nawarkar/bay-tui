@@ -1,6 +1,5 @@
-// Package hooks coordinates session lifecycle events with the memory system.
+// Package hooks coordinates session lifecycle events.
 //
-// OnSessionCreate/Activate/Deactivate/Delete/Rename update working_state and episodic.
 // SyncPaneLayout snapshots tmux pane layout to session YAML, preserving agent session IDs.
 // Debounce prevents rapid duplicate captures when windows switch quickly.
 package hooks
@@ -9,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"bay/internal/config"
-	"bay/internal/logging"
 	"bay/internal/memory"
 	"bay/internal/session"
 	baytmux "bay/internal/tmux"
@@ -26,7 +23,6 @@ var (
 const debounceDuration = 5 * time.Second
 
 // ShouldCapture returns true if enough time has passed since the last capture for this session.
-// Updates the timestamp on success.
 func ShouldCapture(sessionName string) bool {
 	lastCaptureMu.Lock()
 	defer lastCaptureMu.Unlock()
@@ -63,96 +59,23 @@ func ResetDebounce() {
 	lastCaptureTime = make(map[string]time.Time)
 }
 
-// loadConfig loads config with defaults fallback.
-func loadConfig() *config.Config {
-	cfg, err := config.Load()
-	if err != nil {
-		return config.DefaultConfig()
-	}
-	return cfg
-}
-
-// OnSessionCreate inserts working_state row and logs "activate" to episodic.
+// OnSessionCreate is a no-op placeholder for session creation events.
 func OnSessionCreate(sessionName, repoName, workingDir string) error {
-	cfg := loadConfig()
-	if !cfg.Memory.Enabled {
-		return nil
-	}
-
-	now := time.Now()
-	w := &memory.WorkingState{
-		SessionID:    sessionName,
-		Repo:         repoName,
-		WorktreePath: workingDir,
-		ActiveSince:  &now,
-	}
-
-	if err := memory.UpsertWorking(w); err != nil {
-		return err
-	}
-
-	if cfg.Memory.EpisodicLogging {
-		memory.AppendEpisodic(sessionName, "activate", "session created: "+repoName, "")
-	}
-
 	return nil
 }
 
-// OnSessionActivate updates working_state with current branch/worktree and logs event.
+// OnSessionActivate is a no-op placeholder for session activation events.
 func OnSessionActivate(sessionName, repoName, workingDir string) error {
-	cfg := loadConfig()
-	if !cfg.Memory.Enabled {
-		return nil
-	}
-
-	now := time.Now()
-	w := &memory.WorkingState{
-		SessionID:    sessionName,
-		Repo:         repoName,
-		WorktreePath: workingDir,
-		ActiveSince:  &now,
-	}
-
-	// Try to preserve existing fields (task, summary) from prior state
-	existing, err := memory.GetWorking(sessionName)
-	if err == nil && existing != nil {
-		w.CurrentTask = existing.CurrentTask
-		w.LastSummary = existing.LastSummary
-		w.GitBranch = existing.GitBranch
-	}
-
-	if err := memory.UpsertWorking(w); err != nil {
-		return err
-	}
-
-	if cfg.Memory.EpisodicLogging {
-		memory.AppendEpisodic(sessionName, "activate", "session activated", "")
-	}
-
 	return nil
 }
 
-// OnSessionDeactivate syncs pane layout and logs the deactivation event.
-// Agent panes are resumed via claude session IDs on cold boot, so no buffer
-// capture or LLM summarization is needed on session switch.
+// OnSessionDeactivate syncs pane layout on session switch.
 func OnSessionDeactivate(sessionName, repoPath string, windowIdx int) error {
-	cfg := loadConfig()
-	if !cfg.Memory.Enabled {
-		return nil
-	}
-
-	if cfg.Memory.EpisodicLogging {
-		memory.AppendEpisodic(sessionName, "deactivate", "session deactivated", "")
-	}
-
-	// Sync pane layout (including claude session IDs) to session YAML
 	SyncPaneLayout(sessionName, windowIdx)
-
 	return nil
 }
 
 // SyncPaneLayout snapshots the current tmux pane layout and persists it to session YAML.
-// Preserves AgentSessionID from existing YAML data (tmux doesn't know about it).
 func SyncPaneLayout(sessionName string, windowIdx int) {
 	s, err := session.Load(sessionName)
 	if err != nil {
@@ -164,9 +87,8 @@ func SyncPaneLayout(sessionName string, windowIdx int) {
 		return
 	}
 
-	// Build lookups of existing claude session IDs by tmux pane ID and by position.
 	existingIDs := make(map[string]string)
-	existingIDsByIdx := make(map[int]string) // positional fallback
+	existingIDsByIdx := make(map[int]string)
 	for i, p := range s.Panes {
 		if p.AgentSessionID != "" {
 			if p.PaneID != "" {
@@ -177,7 +99,7 @@ func SyncPaneLayout(sessionName string, windowIdx int) {
 	}
 
 	var sessionPanes []session.Pane
-	agentIdx := 0 // tracks position among agent panes for positional fallback
+	agentIdx := 0
 	for _, p := range panes {
 		paneType := "shell"
 		if p.IsAgent {
@@ -192,11 +114,9 @@ func SyncPaneLayout(sessionName string, windowIdx int) {
 			Title:   p.Title,
 		}
 
-		// Preserve claude session ID from existing YAML data
 		if id, ok := existingIDs[p.PaneID]; ok {
 			sp.AgentSessionID = id
 		} else if p.IsAgent {
-			// Positional fallback: match by index among agent panes
 			if id, ok := existingIDsByIdx[agentIdx]; ok {
 				sp.AgentSessionID = id
 			}
@@ -213,7 +133,6 @@ func SyncPaneLayout(sessionName string, windowIdx int) {
 }
 
 // CleanOrphanWindows kills tmux windows that don't belong to any saved session.
-// Window 0 and the window containing the topbar pane are always preserved.
 func CleanOrphanWindows() {
 	sessions, err := session.List()
 	if err != nil {
@@ -237,39 +156,18 @@ func CleanOrphanWindows() {
 	}
 }
 
-// OnSessionDelete removes all DB rows for the session.
+// OnSessionDelete clears tasks for the session.
 func OnSessionDelete(sessionName string) error {
-	cfg := loadConfig()
-	if !cfg.Memory.Enabled {
-		return nil
-	}
-
-	memory.DeleteSessionEpisodic(sessionName)
-	memory.DeleteWorking(sessionName)
+	memory.ClearTasks(sessionName)
 	return nil
 }
 
-// OnSessionRename updates session_id across all tables.
+// OnSessionRename updates task session_id.
 func OnSessionRename(oldName, newName string) error {
-	cfg := loadConfig()
-	if !cfg.Memory.Enabled {
-		return nil
-	}
-
-	memory.RenameWorking(oldName, newName)
-
-	// Rename episodic entries
 	d, err := memory.GetDB()
 	if err != nil {
-		logging.Error("opening db for session rename: %v", err)
 		return nil
 	}
-	if _, e := d.Exec(`UPDATE episodic SET session_id = ? WHERE session_id = ?`, newName, oldName); e != nil {
-		logging.Error("renaming episodic entries %s→%s: %v", oldName, newName, e)
-	}
-	if _, e := d.Exec(`UPDATE pending_summaries SET session_id = ? WHERE session_id = ?`, newName, oldName); e != nil {
-		logging.Error("renaming pending_summaries %s→%s: %v", oldName, newName, e)
-	}
-
+	d.Exec(`UPDATE tasks SET session_id = ? WHERE session_id = ?`, newName, oldName)
 	return nil
 }

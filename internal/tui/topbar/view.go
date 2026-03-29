@@ -150,8 +150,8 @@ func (m Model) renderCollapsedView(w int) string {
 	if m.activeSession != "" {
 		for _, s := range m.sessions {
 			if s.Name == m.activeSession {
-				if s.Note != "" {
-					noteLeft = styles.CollapsedNote.Render(s.Note)
+				if s.Purpose != "" {
+					noteLeft = styles.CollapsedNote.Render(s.Purpose)
 				}
 				if s.WorktreeBranch != "" {
 					branchDiffRight = styles.SessionName.Render("⑃ "+s.WorktreeBranch)
@@ -283,8 +283,8 @@ func (m Model) renderExpandedView(w int) string {
 		var noteLeft, branchDiffRight string
 		for _, s := range m.sessions {
 			if s.Name == sessionName {
-				if s.Note != "" {
-					noteLeft = styles.CollapsedNote.Render(s.Note)
+				if s.Purpose != "" {
+					noteLeft = styles.CollapsedNote.Render(s.Purpose)
 				}
 				if s.WorktreeBranch != "" {
 					branchDiffRight = styles.SessionName.Render("⑃ " + s.WorktreeBranch)
@@ -327,8 +327,8 @@ func (m Model) renderModalContent(w int, pad string) string {
 		return header + "\n" + pad + fmt.Sprintf("Delete '%s'? (y/n)", m.deleteTarget)
 	case modeRename:
 		return header + "\n" + pad + "Rename: " + m.renameInput.View()
-	case modeEditNote:
-		return header + "\n" + pad + "Note: " + m.noteInput.View()
+	case modeEditPurpose:
+		return header + "\n" + pad + "Purpose: " + m.purposeInput.View()
 	case modeSettings:
 		return header + "\n" + pad + styles.HelpBar.Render("Editing ~/.bay/config.yaml") +
 			"\n" + pad + styles.HelpBar.Render("Save & close editor to return")
@@ -374,10 +374,9 @@ func (m Model) renderModalContent(w int, pad string) string {
 			styles.NoteText.Render("a") + " " + styles.HelpBar.Render("archive") + "  " +
 			styles.NoteText.Render("d") + " " + styles.HelpBar.Render("delete") + "  " +
 			styles.NoteText.Render("R") + " " + styles.HelpBar.Render("rename") + "  " +
-			styles.NoteText.Render("N") + " " + styles.HelpBar.Render("note") + "  " +
+			styles.NoteText.Render("N") + " " + styles.HelpBar.Render("purpose") + "  " +
 			styles.NoteText.Render("/") + " " + styles.HelpBar.Render("search") + "  " +
 			styles.NoteText.Render("s") + " " + styles.HelpBar.Render("status") + "  " +
-			styles.NoteText.Render("m") + " " + styles.HelpBar.Render("memory") + "  " +
 			styles.NoteText.Render("A") + " " + styles.HelpBar.Render("archive") + "  " +
 			styles.NoteText.Render("S") + " " + styles.HelpBar.Render("settings") + "  " +
 			styles.NoteText.Render("q") + " " + styles.HelpBar.Render("quit") + "  " +
@@ -466,7 +465,7 @@ func (m Model) renderHintBarPlain() string {
 		return tmuxHint("enter", "save") + gap + tmuxHint("esc", "cancel")
 	}
 
-	if m.mode == modeEditNote {
+	if m.mode == modeEditPurpose {
 		return tmuxHint("enter", "save") + gap + tmuxHint("esc", "cancel")
 	}
 	if m.mode == modeSettings {
@@ -497,10 +496,9 @@ func (m Model) renderHintBarPlain() string {
 			tmuxHint("n", "new") + gap +
 			tmuxHint("d", "delete") + gap +
 			tmuxHint("R", "rename") + gap +
-			tmuxHint("N", "note") + gap +
+			tmuxHint("N", "purpose") + gap +
 			tmuxHint("/", "search") + gap +
 			tmuxHint("s", "status") + gap +
-			tmuxHint("m", "memory") + gap +
 			tmuxHint("A", "archive") + gap +
 			tmuxHint("S", "settings") + gap +
 			tmuxHint("?", "help") + gap +

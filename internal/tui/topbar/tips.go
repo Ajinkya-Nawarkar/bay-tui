@@ -86,11 +86,11 @@ func (m Model) focusedRepoTips() []tip {
 func (m Model) focusedSessionTips() []tip {
 	tips := []tip{{"enter", "activate session"}}
 
-	// Suggest adding a note if the selected session doesn't have one
+	// Suggest setting a purpose if the selected session doesn't have one
 	if name := m.selectedSessionName(); name != "" {
 		for _, s := range m.sessions {
-			if s.Name == name && s.Note == "" {
-				tips = append(tips, tip{"N", "add a note"})
+			if s.Name == name && s.Purpose == "" {
+				tips = append(tips, tip{"N", "set purpose"})
 				break
 			}
 		}

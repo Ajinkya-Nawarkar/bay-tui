@@ -10,7 +10,6 @@ import (
 	"bay/internal/config"
 	"bay/internal/constants"
 	"bay/internal/logging"
-	"bay/internal/memory"
 	baytmux "bay/internal/tmux"
 	"bay/internal/tui"
 )
@@ -136,9 +135,6 @@ func runTUI() error {
 			return err
 		}
 	}
-
-	// Process any pending LLM summaries from prior crashes/restarts
-	go memory.ProcessPendingSummaries()
 
 	app := tui.NewApp(cfg, firstRun)
 	logging.Info("starting bubbletea program")

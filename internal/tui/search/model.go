@@ -15,7 +15,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"bay/internal/constants"
-	"bay/internal/memory"
 	"bay/internal/session"
 )
 
@@ -281,13 +280,7 @@ func enrichSession(s *session.Session, heartbeats map[string]time.Time) enriched
 	e := enrichedSession{
 		Session: s,
 		Branch:  s.WorktreeBranch,
-		Note:    s.Note,
-	}
-
-	if w, err := memory.GetWorking(s.Name); err == nil && w != nil {
-		if e.Branch == "" {
-			e.Branch = w.GitBranch
-		}
+		Note:    s.Purpose,
 	}
 
 	if s.WorkingDir != "" {
