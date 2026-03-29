@@ -10,6 +10,7 @@ import (
 
 	"bay/internal/config"
 	"bay/internal/constants"
+	"bay/internal/memory"
 	"bay/internal/session"
 )
 
@@ -128,6 +129,23 @@ func Agent(args []string) error {
 	env := os.Environ()
 	if s, err := session.FindActiveSession(); err == nil {
 		env = append(env, "BAY_SESSION="+s.Name)
+		// Print session context info before handing off to the agent
+		if s.Purpose != "" {
+			fmt.Printf("✓ Purpose: %s\n", s.Purpose)
+		}
+		tasks, _ := memory.ListTasks(s.Name)
+		if len(tasks) > 0 {
+			pending := 0
+			for _, t := range tasks {
+				if t.Status != "done" {
+					pending++
+				}
+			}
+			fmt.Printf("✓ Checklist: %d items (%d pending)\n", len(tasks), pending)
+		}
+		if s.Purpose != "" || len(tasks) > 0 {
+			fmt.Println("  Context injected via SessionStart hook")
+		}
 	}
 
 	return syscall.Exec(binaryPath, execArgs, env)

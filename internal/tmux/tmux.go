@@ -847,7 +847,12 @@ type SessionPane struct {
 func agentLaunchCmd(agentSessionID string, workingDir string) string {
 	bin := bayBin()
 	if agentSessionID != "" && claudeSessionExists(agentSessionID, workingDir) {
-		return fmt.Sprintf("%s agent --resume %s; exec bash", bin, agentSessionID)
+		return fmt.Sprintf("echo '✓ Resuming agent session %s'; %s agent --resume %s; exec bash",
+			agentSessionID[:8], bin, agentSessionID)
+	}
+	if agentSessionID != "" {
+		// Had a UUID but it's stale
+		return fmt.Sprintf("echo '⚠ Previous agent session expired — starting fresh'; %s agent; exec bash", bin)
 	}
 	return bin + " agent; exec bash"
 }
