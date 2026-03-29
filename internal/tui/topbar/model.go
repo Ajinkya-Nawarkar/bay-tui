@@ -1828,6 +1828,7 @@ func (m Model) startSearch() (tea.Model, tea.Cmd) {
 
 	windowIdx := newWindowIdx
 	return m, func() tea.Msg {
+		baytmux.HidePaneBorders()
 		baytmux.FocusDevPane(windowIdx)
 		return tea.ClearScreen()
 	}
@@ -1863,6 +1864,7 @@ func (m Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.focused = true
 		windowIdx := m.prevWindowIdx
 		return m, func() tea.Msg {
+			baytmux.RestorePaneBorders()
 			baytmux.FocusDevPane(windowIdx)
 			return tea.ClearScreen()
 		}
@@ -1878,6 +1880,7 @@ func (m Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		windowIdx := m.prevWindowIdx
 		return m, func() tea.Msg {
+			baytmux.RestorePaneBorders()
 			baytmux.FocusDevPane(windowIdx)
 			return tea.ClearScreen()
 		}
