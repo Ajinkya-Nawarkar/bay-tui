@@ -126,6 +126,12 @@ func run() (exitCode int) {
 			return 1
 		}
 
+	case "purpose":
+		if err := cmd.Internal([]string{"purpose"}); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
+		}
+
 	case "sync-panes":
 		// Legacy alias — routes to bay internal sync-panes
 		if err := cmd.Internal([]string{"sync-panes"}); err != nil {
@@ -169,8 +175,11 @@ Session Purpose:
   bay task rm <id>           Remove item
   bay task clear             Clear all checklist items
 
-Search & Config:
+Views:
   bay search                 Search sessions + activity dashboard
+  bay purpose                Purpose and checklist editor
+
+Config:
   bay ctx config             Show/toggle context injection settings
 
 Infrastructure:

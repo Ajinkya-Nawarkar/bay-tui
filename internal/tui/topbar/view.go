@@ -375,6 +375,7 @@ func (m Model) renderModalContent(w int, pad string) string {
 			styles.NoteText.Render("d") + " " + styles.HelpBar.Render("delete") + "  " +
 			styles.NoteText.Render("R") + " " + styles.HelpBar.Render("rename") + "  " +
 			styles.NoteText.Render("N") + " " + styles.HelpBar.Render("purpose") + "  " +
+			styles.NoteText.Render("p") + " " + styles.HelpBar.Render("purpose view") + "  " +
 			styles.NoteText.Render("/") + " " + styles.HelpBar.Render("search") + "  " +
 			styles.NoteText.Render("s") + " " + styles.HelpBar.Render("status") + "  " +
 			styles.NoteText.Render("A") + " " + styles.HelpBar.Render("archive") + "  " +
@@ -430,6 +431,9 @@ func (m Model) renderModalContent(w int, pad string) string {
 	case modeSearch:
 		return header + "\n" + pad + styles.HelpBar.Render("Searching sessions...") +
 			"\n" + pad + styles.HelpBar.Render("Close search to return")
+	case modePurpose:
+		return header + "\n" + pad + styles.HelpBar.Render("Editing session purpose...") +
+			"\n" + pad + styles.HelpBar.Render("Close to return")
 	}
 
 	return header
@@ -486,6 +490,9 @@ func (m Model) renderHintBarPlain() string {
 	if m.mode == modeSearch {
 		return tmuxHint("searching", "close to return")
 	}
+	if m.mode == modePurpose {
+		return tmuxHint("purpose", "close to return")
+	}
 	if m.mode == modeCleanup {
 		return tmuxHint("space", "toggle") + gap + tmuxHint("a", "all") + gap + tmuxHint("enter", "delete") + gap + tmuxHint("esc", "skip")
 	}
@@ -497,6 +504,7 @@ func (m Model) renderHintBarPlain() string {
 			tmuxHint("d", "delete") + gap +
 			tmuxHint("R", "rename") + gap +
 			tmuxHint("N", "purpose") + gap +
+			tmuxHint("p", "purpose view") + gap +
 			tmuxHint("/", "search") + gap +
 			tmuxHint("s", "status") + gap +
 			tmuxHint("A", "archive") + gap +

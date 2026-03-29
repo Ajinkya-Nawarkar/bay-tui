@@ -38,6 +38,7 @@ const (
 	modeHelp
 	modeArchive
 	modeSearch
+	modePurpose
 )
 
 type clearStatusMsg struct{}
@@ -120,8 +121,9 @@ type Model struct {
 	archiveWindowIdx int
 	archiveCount     int
 
-	// Search subprocess state
-	searchWindowIdx int
+	// Subprocess state
+	searchWindowIdx  int
+	purposeWindowIdx int
 
 	// Diff summary cache: session name → diff summary
 	diffCache map[string]*diffSummary
@@ -498,6 +500,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeSearch {
 			return m.updateSearch(msg)
 		}
+		if m.mode == modePurpose {
+			return m.updatePurpose(msg)
+		}
 		if m.mode == modeHelp {
 			m.mode = modeNormal
 			return m, nil
@@ -655,6 +660,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.startSearch()
 		case "s":
 			return m.startSearch()
+		case "p":
+			return m.startPurpose()
 		case "?":
 			m.mode = modeHelp
 			return m, nil
@@ -1869,6 +1876,69 @@ func (m Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// --- Purpose subprocess ---
+
+func (m Model) startPurpose() (tea.Model, tea.Cmd) {
+	m.prevWindowIdx = m.activeWindowIdx
+
+	newWindowIdx, err := baytmux.CreateSessionWindow(config.BayDir())
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	if err := baytmux.MoveTopbarToWindow(newWindowIdx); err != nil {
+		baytmux.KillWindow(newWindowIdx)
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	if err := baytmux.SwitchToWindow(newWindowIdx); err != nil {
+		m.statusMsg = fmt.Sprintf("Error: %v", err)
+		return m, clearStatusAfter(constants.StatusClearLong)
+	}
+
+	bayBin, err := os.Executable()
+	if err != nil {
+		bayBin = "bay"
+	}
+	topbarTarget := baytmux.TopbarPaneTarget()
+
+	shellCmd := fmt.Sprintf("%s internal purpose; tmux send-keys -t %s p; tmux select-pane -t %s; exit",
+		bayBin, topbarTarget, topbarTarget)
+	baytmux.SendToDevPane(newWindowIdx, shellCmd)
+
+	m.mode = modePurpose
+	m.purposeWindowIdx = newWindowIdx
+	m.focused = false
+
+	windowIdx := newWindowIdx
+	return m, func() tea.Msg {
+		baytmux.HidePaneBorders()
+		baytmux.FocusDevPane(windowIdx)
+		return tea.ClearScreen()
+	}
+}
+
+func (m Model) updatePurpose(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() != "p" {
+		return m, nil
+	}
+
+	m.mode = modeNormal
+	safeKillWindow(m.purposeWindowIdx, "purpose")
+	m.returnTopbarToPrev()
+	m.refresh()
+	m.focused = true
+
+	windowIdx := m.prevWindowIdx
+	return m, func() tea.Msg {
+		baytmux.RestorePaneBorders()
+		baytmux.FocusDevPane(windowIdx)
+		return tea.ClearScreen()
+	}
 }
 
 // fetchDiffCmd runs git diff --shortstat and git status --porcelain asynchronously.

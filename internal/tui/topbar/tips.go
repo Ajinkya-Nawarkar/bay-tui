@@ -96,6 +96,7 @@ func (m Model) focusedSessionTips() []tip {
 		}
 	}
 
+	tips = append(tips, tip{"p", "purpose view"})
 	tips = append(tips, tip{"s", "session status"})
 	tips = append(tips, tip{"a", "archive session"})
 	tips = append(tips, tip{"d", "delete session"})

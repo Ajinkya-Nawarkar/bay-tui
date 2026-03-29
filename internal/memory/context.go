@@ -32,6 +32,9 @@ func RenderContextDB(d *sql.DB, sessionID, repo, branch, purpose string) (string
 	// Checklist
 	b.WriteString(renderChecklist(d, sessionID))
 
+	// Pointer for agents
+	b.WriteString("\n> Manage with: `bay task \"purpose\"` | `bay task add/done/rm`\n")
+
 	return b.String(), nil
 }
 

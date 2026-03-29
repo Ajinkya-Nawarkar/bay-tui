@@ -19,6 +19,7 @@ type keyMap struct {
 	Delete         key.Binding
 	Rename         key.Binding
 	Purpose      key.Binding
+	PurposeView  key.Binding
 	Archive      key.Binding
 	Status       key.Binding
 	Settings     key.Binding
@@ -80,6 +81,10 @@ var keys = keyMap{
 	Purpose: key.NewBinding(
 		key.WithKeys("N"),
 		key.WithHelp("N", "edit purpose"),
+	),
+	PurposeView: key.NewBinding(
+		key.WithKeys("p"),
+		key.WithHelp("p", "purpose view"),
 	),
 	Archive: key.NewBinding(
 		key.WithKeys("A"),
